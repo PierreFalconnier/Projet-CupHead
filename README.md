@@ -6,3 +6,4 @@ mode.py  : implémente le model CupHeadNet (CNN) qui prend l'état en entrée (s
             deux models, celui online qui s'entraine, et celui target, copie du online et actualiser réugulièrement, qui permet le calcul de la loss
 
 
+test
