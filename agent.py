@@ -55,9 +55,9 @@ class CupHead(object):
     Given a state, choose an epsilon-greedy action and update value of step.
 
     Inputs:
-    state(LazyFrame): A single observation of the current state, dimension is (state_dim)
+    state : A single observation of the current state, dimension is (state_dim)
     Outputs:
-    action_idx (int): An integer representing which action Mario will perform
+    action_idx (int): An integer representing which action CupHead will perform
     """
         # EXPLORE
         if np.random.rand() < self.exploration_rate:

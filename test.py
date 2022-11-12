@@ -13,13 +13,46 @@ import os
 import mss
 from subprocess import check_output
 
+def holdKey(key,seconds=3):
+    pg.keyDown(key)
+    time.sleep(seconds)
+    pg.keyUp(key)
+
+time.sleep(4)
+# keyboard.send('z', do_release=False)
+
+pg.PAUSE = 0 #valeur par défaut = 0.1, temps entre les actions
+
+
+# for k in range(4):
+#     time.sleep(1)
+#     pg.keyDown('right')
+#     pg.keyDown('z')
+#     time.sleep(0.5)
+#     pg.keyUp('right')
+#     pg.keyUp('z')
+
+
+
+# exit()
+
 ### Variables et fonctions
 
-mon = {'top': 0, 'left': 0, 'width': 1920, 'height': 1080}
+actions_binds_list = ["x"    ,"z"   ,"v"      ,"shiftleft","c"   ,"right","left","up","down","tab"          ]
+actions_names_list = ["shoot","jump","exshoot","dash"     ,"lock","right","left","up","down","switch_weapon"]
+flying_actions_list =       ["x"    ,"v"      ,"z"    ,"shift"]
+flying_actions_names_list = ["shoot","special","parry","shrink"]
+action_dim = len(actions_binds_list)
+
+mon = {'top': 0, 'left': 0, 'width': 1920, 'height': 1080} 
+# mon = {'top': 0, 'left': 0, 'width': 800, 'height': 400} 
+
+done = False
+step_num = 0
 
 def take_screenshot():
     with mss.mss() as sct:
-        img = sct.grab(mon)         # entire screen
+        img = sct.grab(mon)         
         img = np.array(img)
         img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
         return img
@@ -51,36 +84,101 @@ def get_pid(name):
     return map(int,check_output(["pidof",name]).split())
 # print(list(get_pid('chrome'))) ; exit()
 
-def holdKey(key,seconds=3):
-    pg.keyDown(key)
-    time.sleep(seconds)
-    pg.keyUp(key)
+
 
 def nothing(x):
     pass
 
 def is_GameOver(img):
-        res = cv2.matchTemplate(img[h_min_shift:h_max_shift,w_min_shift:w_max_shift] \
-                             , img_shift, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-        return (res >= 0.8).any()
+    res = cv2.matchTemplate(img[h_min_shift:h_max_shift,w_min_shift:w_max_shift] \
+                            , img_shift, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
+    return (res >= 0.8).any()
 
 def is_GameWin(img):
-        res = cv2.matchTemplate(img[h_min_win:h_max_win,w_min_win:w_max_win] \
-                             , img_win, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-        return (res >= 0.8).any()
+    res = cv2.matchTemplate(img[h_min_win:h_max_win,w_min_win:w_max_win] \
+                            , img_win, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
+    return (res >= 0.8).any()
 
 def compute_progression(img):
-        img_progress_bar = img[h_min_bar:h_max_bar,w_min_bar:w_max_bar]
-        hsv_progress_bar = cv2.cvtColor(img_progress_bar, cv2.COLOR_BGR2HSV)
-        hsv_progress_bar = cv2.GaussianBlur(src=hsv_progress_bar,ksize=(3,3),sigmaX=1,sigmaY=1) 
-        mask = cv2.inRange(hsv_progress_bar, lower_red, upper_red) # seuillage
-        _, mass_x = np.where(mask >= 255)
-        try:
-            cX = np.average(mass_x)
-        except:
-            ValueError('CupHead non-detecté dans la barre de progression')
-        progression = cX/mask.shape[1]
-        return progression
+    img_progress_bar = img[h_min_bar:h_max_bar,w_min_bar:w_max_bar]
+    hsv_progress_bar = cv2.cvtColor(img_progress_bar, cv2.COLOR_BGR2HSV)
+    hsv_progress_bar = cv2.GaussianBlur(src=hsv_progress_bar,ksize=(3,3),sigmaX=1,sigmaY=1) 
+    mask = cv2.inRange(hsv_progress_bar, lower_red, upper_red) # seuillage
+    _, mass_x = np.where(mask >= 255)
+    try:
+        cX = np.average(mass_x)
+    except:
+        ValueError('CupHead non-detecté dans la barre de progression')
+    progression = cX/mask.shape[1]
+    return progression
+
+def reset_episode():
+    pg.press('esc')  # vérifier si pas plutôt 'escape'
+    pg.press('enter') # besoin d'un sleep entre les deux ?
+
+def step(action_number):                # renvoie next_state, reward, done, trunc, info
+    action_bind = actions_binds_list[action_number]
+
+    # Mise a jour de l'image via capture d'écran 
+
+    img = take_screenshot()
+    
+    # action
+
+    # pg.press('esc')
+    # pg.press(action_bind)
+
+    # Vérifier si Game Over ou Game Win
+
+    if is_GameOver(img) : 
+        done = True
+        cv2.imwrite('test.png',img)
+        print("You Died !")
+        time.sleep(2)
+        img = take_screenshot()
+        print("Progression : ",compute_progression(img)) 
+        pg.press('enter') # recommencer une partie en pressant entrer sur Retry
+
+    if is_GameWin(img):
+        done = True
+        print("GG ! You won !")
+        exit()
+
+
+prev_frame_time = time.time()
+
+print("Go on the game !")
+# time.sleep(5)
+
+start_time = time.time()
+temps=0
+while temps<180 :  # seuil temps maximal en secondes
+
+    step(0)
+    step_num += 1
+
+    # Calcul FPS
+    new_frame_time = time.time()
+    fps = 1/(new_frame_time-prev_frame_time)
+    prev_frame_time = new_frame_time
+    fps = str(int(fps))
+    print(fps)
+
+    temps = time.time()-start_time
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cv2.destroyAllWindows()
+print("Temps maximal atteint")
+
+# TODO : ajouter une option de skip image
+# TODO : créer la varible state formée de plusieurs images (utiliser une list ? queu ?)
+
+
+
+# # # Commentaires et notes
+
 
 # w_min_dead = int(img.shape[1]*35/1920)
 # w_max_dead = int(img.shape[1]*144/1920)
@@ -94,53 +192,13 @@ def compute_progression(img):
 # h_max = int(img.shape[0]*1014/1440)
 # img_retry = img[h_min:h_max,w_min:w_max]
 
-# # Fenêtres
+# # Fenêtres, avant la boucle while
 # cv2.namedWindow('Mask', cv2.WINDOW_NORMAL)
 # cv2.resizeWindow('Mask', 1024, 1024)
 # cv2.namedWindow('Hsv', cv2.WINDOW_NORMAL)
 # cv2.resizeWindow('Hsv', 1024, 1024)
 
-prev_frame_time = time.time()
-
-print("Go on the game !")
-time.sleep(5)
-done = False
-
-while True :
-    # Mise a jour de l'image via capture d'écran 
-    img = take_screenshot()
-    # action
-
-    # Vérifier si Game Over ou GameWin
-    if is_GameWin(img):
-        print("GG ! You won !")
-        exit()
-    
-    if is_GameOver(img) : 
-        done = True
-        print("You Died !")
-        time.sleep(2)
-        img = take_screenshot()
-        print("Progression : ",compute_progression(img)) 
-        pg.press('enter') # recommencer une partie en pressant entrer sur Retry
-
-    # Affichage
-
-    # cv2.imshow("Hsv", img)
-    # cv2.imshow("Hsv", hsv_progress_bar)
-    # cv2.imshow("Mask", mask)
-
-    # Calcul FPS
-    new_frame_time = time.time()
-    fps = 1/(new_frame_time-prev_frame_time)
-    prev_frame_time = new_frame_time
-    fps = str(int(fps))
-    print(fps)
-
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-cv2.destroyAllWindows()
-
-# TODO : ajouter une option de skip image
-# TODO : créer la varible state formée de plusieurs images (utiliser une list ? queu ?)
+# # Affichage, dans la boucle
+# cv2.imshow("Hsv", img)
+# cv2.imshow("Hsv", hsv_progress_bar)
+# cv2.imshow("Mask", mask)
