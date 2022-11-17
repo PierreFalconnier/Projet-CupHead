@@ -16,48 +16,49 @@ import os
 CUR_DIR_PATH = Path(__file__).resolve()
 save_dir = os.path.join(CUR_DIR_PATH, "save")
 
-
 use_cuda = torch.cuda.is_available()
 print(f"Using CUDA: {use_cuda}")
 print()
 
-# Hyperparameters
 
-
-
-# transforms and environment
+pg.PAUSE = 0
 
 env = CupHeadEnvironment()
-
-
-# 
-
-
-
 
 save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
 save_dir.mkdir(parents=True)
 
-cuphead = CupHead(state_dim=(4, 84, 84), action_dim=env.action_space.n, save_dir=save_dir)
-
+cuphead = CupHead(state_dim=(env.dim_state, env.resize_h, env.resize_w), action_dim=env.actions_dim, save_dir=save_dir)
 logger = MetricLogger(save_dir)
 
-episodes = 10
+episodes = 1000
+print("Go on the game !...")
+time.sleep(5)
+print("Training time !")
+
+
 for e in range(episodes):
 
-    state = env.reset()
+    pg.keyUp('x')
+    start_time = time.time()
+    prev_frame_time = time.time()
+    temps = 0
+    current_hp = 3
+    state = env.reset_episode()
+    pg.keyDown('x')
 
+    c=0
     # Play the game!
-    while True:
+    while True:  
 
         # Run agent on the state
-        action = cuphead.act(state)
+        action_idx = cuphead.act(state)
 
         # Agent performs action
-        next_state, reward, done, trunc, info = env.step(action)
+        next_state, reward, done, current_hp = env.step(action_idx, current_hp=current_hp)
 
         # Remember
-        cuphead.cache(state, next_state, action, reward, done)
+        cuphead.cache(state, next_state, action_idx, reward, done)
 
         # Learn
         q, loss = cuphead.learn()
@@ -68,9 +69,32 @@ for e in range(episodes):
         # Update state
         state = next_state
 
+
+        # Vérifications en direct
+        print("------------")
+        print("Steap ",cuphead.curr_step,"q ",q,"Loss ",loss)
+        print(env.actions_list[action_idx],reward, current_hp)
+        # if c%5==0:
+        #     for k in range(state.shape[0]):
+        #         plt.figure()
+        #         plt.imshow(state[k])
+        #         plt.show()
+
         # Check if end of game
-        if done or info["flag_get"]:
+        if done:
             break
+
+        # # Calcul FPS
+
+        # new_frame_time = time.time()
+        # fps = 1/(new_frame_time-prev_frame_time)
+        # prev_frame_time = new_frame_time
+        # fps = str(int(fps))
+        # os.system('clear')
+        # print("FPS : ",fps)
+        # print("Current HP : ",current_hp)
+
+        # temps = time.time()-start_time
 
     logger.log_episode()
 

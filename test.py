@@ -13,10 +13,39 @@ import os
 import mss
 from subprocess import check_output
 
+
+img = cv2.imread('full_1hp_1.jpg')
+
+h_min_hp = int(img.shape[1]*1008/1920)
+h_max_hp = int(img.shape[1]*1041/1920)
+w_min_hp = int(img.shape[0]*38/1080)
+w_max_hp = int(img.shape[0]*137/1080)
+img = img[h_min_hp:h_max_hp,w_min_hp:w_max_hp] 
+
+cv2.imwrite('1hp_2.png',img)
+
+plt.figure()
+plt.imshow(img)
+plt.show()
+exit()
+
+
+
+
+
+
 def holdKey(key,seconds=3):
     pg.keyDown(key)
     time.sleep(seconds)
     pg.keyUp(key)
+
+def hold2Keys(key1,key2,seconds=3):
+    pg.keyDown(key1)
+    pg.keyDown(key2)
+    time.sleep(seconds)
+    pg.keyUp(key1)
+    pg.keyUp(key2)
+
 
 time.sleep(4)
 # keyboard.send('z', do_release=False)
@@ -43,6 +72,11 @@ actions_names_list = ["shoot","jump","exshoot","dash"     ,"lock","right","left"
 flying_actions_list =       ["x"    ,"v"      ,"z"    ,"shift"]
 flying_actions_names_list = ["shoot","special","parry","shrink"]
 action_dim = len(actions_binds_list)
+
+# Action réellement utilisées :
+actions_list = ["right","left","up","down","still","z","shiftleft",("z","right"),("z","left")]
+# si still : ne rien faire
+# ajouter le shoot et exshoot dans un second temps, dans un premier temps, shoot en continu. Avec les différentes directions pk pas
 
 mon = {'top': 0, 'left': 0, 'width': 1920, 'height': 1080} 
 # mon = {'top': 0, 'left': 0, 'width': 800, 'height': 400} 
@@ -80,12 +114,6 @@ img_win = cv2.imread('the_from_win_screen.png')
 lower_red = np.array([0, 197, 116])
 upper_red = np.array([71, 255, 198])
 
-def get_pid(name):
-    return map(int,check_output(["pidof",name]).split())
-# print(list(get_pid('chrome'))) ; exit()
-
-
-
 def nothing(x):
     pass
 
@@ -116,64 +144,74 @@ def reset_episode():
     pg.press('esc')  # vérifier si pas plutôt 'escape'
     pg.press('enter') # besoin d'un sleep entre les deux ?
 
-def step(action_number):                # renvoie next_state, reward, done, trunc, info
-    action_bind = actions_binds_list[action_number]
+def step(time_limite=180):                # correspond à un épisode, renvoie : next_state, reward, done, trunc, info
 
-    # Mise a jour de l'image via capture d'écran 
+    start_time = time.time()
+    prev_frame_time = time.time()
+    temps=0
+    loop_counter = 0
 
-    img = take_screenshot()
-    
-    # action
+    while temps<time_limite :  # seuil temps maximal en secondes
+        loop_counter += 1
 
-    # pg.press('esc')
-    # pg.press(action_bind)
 
-    # Vérifier si Game Over ou Game Win
+        # Mise a jour de l'image via capture d'écran 
 
-    if is_GameOver(img) : 
-        done = True
-        cv2.imwrite('test.png',img)
-        print("You Died !")
-        time.sleep(2)
         img = take_screenshot()
-        print("Progression : ",compute_progression(img)) 
-        pg.press('enter') # recommencer une partie en pressant entrer sur Retry
+        
+        # action de l'agent
 
-    if is_GameWin(img):
-        done = True
-        print("GG ! You won !")
-        exit()
+        # pg.press('esc')
+        # pg.press(action_bind)
+
+        # Vérifier si Game Over ou Game Win
+
+        if is_GameOver(img) : 
+            done = True
+            cv2.imwrite('test.png',img)
+            print("You Died !")
+            time.sleep(2)
+            img = take_screenshot()
+            progression = compute_progression(img)
+            print("Progression : ") 
+            reward = int(100*progression)
+            pg.press('enter') # recommencer une partie en pressant entrer sur Retry
+            return reward
+
+        if is_GameWin(img):
+            done = True
+            reward = 200
+            print("GG ! You won !")
+            return reward
+        
+
+        # Calcul FPS
+        new_frame_time = time.time()
+        fps = 1/(new_frame_time-prev_frame_time)
+        prev_frame_time = new_frame_time
+        fps = str(int(fps))
+        os.system('clear')
+        print("FPS : ",fps)
+
+        temps = time.time()-start_time
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cv2.destroyAllWindows()
+    print("Time milite atteinte")
+    return 0   # reward en cas d'echec
+    
+    
 
 
-prev_frame_time = time.time()
+if __name__=='__main__':
 
-print("Go on the game !")
-# time.sleep(5)
+    print("Go on the game !")
+    time.sleep(5)
 
-start_time = time.time()
-temps=0
-while temps<180 :  # seuil temps maximal en secondes
+    step()
 
-    step(0)
-    step_num += 1
-
-    # Calcul FPS
-    new_frame_time = time.time()
-    fps = 1/(new_frame_time-prev_frame_time)
-    prev_frame_time = new_frame_time
-    fps = str(int(fps))
-    print(fps)
-
-    temps = time.time()-start_time
-
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-cv2.destroyAllWindows()
-print("Temps maximal atteint")
-
-# TODO : ajouter une option de skip image
-# TODO : créer la varible state formée de plusieurs images (utiliser une list ? queu ?)
 
 
 

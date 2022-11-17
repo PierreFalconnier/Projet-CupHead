@@ -25,9 +25,9 @@ class MyGrayscale(object):
     def __init__(self) -> None:
         self.TrGrayscale = Grayscale()
 
-    def __call__(self, sample) -> Any:
-        sample["x"] = self.TrGrayscale(sample["x"])
-        return sample
+    def __call__(self, tensor) -> Any:
+        tensor = self.TrGrayscale(tensor)
+        return tensor
         
     
 

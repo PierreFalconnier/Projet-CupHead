@@ -39,14 +39,14 @@ class CupHead(object):
 
         ## update_Q_online() and sync_Q_online
 
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.00025)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.001)
         self.loss_fn = torch.nn.SmoothL1Loss()
 
         ## learn()
 
-        self.burnin = 1e4  # min. experiences before training
+        self.burnin = 1e2  # min. experiences before training
         self.learn_every = 3  # no. of experiences between updates to Q_online
-        self.sync_every = 1e4  # no. of experiences between Q_target & Q_online sync
+        self.sync_every = 1e2  # no. of experiences between Q_target & Q_online sync
 
 
 
@@ -169,5 +169,5 @@ class CupHead(object):
 
         # Backpropagate loss through Q_online
         loss = self.update_Q_online(td_est, td_tgt)
-
+    
         return (td_est.mean().item(), loss)
