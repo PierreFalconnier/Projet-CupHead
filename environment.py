@@ -31,6 +31,11 @@ def hold2Keys(key1,key2,seconds=0.1):
     pg.keyUp(key1)
     pg.keyUp(key2)
 
+def print_img(img):
+    plt.figure()
+    plt.imshow(img)
+    plt.show()
+
 
 # Actions
 # actions_binds_list = ["x"    ,"z"   ,"v"      ,"shiftleft","c"   ,"right","left","up","down","tab"          ]
@@ -43,7 +48,14 @@ def hold2Keys(key1,key2,seconds=0.1):
 
 class CupHeadEnvironment(object):
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        resize_w=128,
+        resize_h=128,
+        dim_state=1,
+        controls_enabled = True,
+        episode_time_limite = 180,
+        ) -> None:
 
         # Actions
         # self.actions_list = [["right"],["left"],["up"],["down"],["s"],["z"],["shiftleft"],["z","right"],["z","left"]]   # s correspond à 'still', cuphead ne fait rien
@@ -51,9 +63,13 @@ class CupHeadEnvironment(object):
         self.actions_list = [["right"],["left"],["z"],["z","right"],["shiftleft"]]   # s correspond à 'still', cuphead ne fait rien
         self.hold_timings = [0.75,   0.1,      0.75,        0.65,0.1]
         self.actions_dim = len(self.actions_list)
+        self.controls_enabled = controls_enabled   # si True, le programme utilie PyAutoGUI et controle le clavier
 
         # Crop variables and screen shot
-        self.mon = {'top': 0, 'left': 0, 'width': 1920, 'height': 1080} 
+        # self.mon = {'top': 0, 'left': 0, 'width': 1920, 'height': 1080} 
+        # self.mon = {'top': 0, 'left': 0, 'width': 1600, 'height': 900} 
+        self.mon = {'top': 0, 'left': 0, 'width': 960, 'height': 540} 
+
         img = self.take_screenshot()
 
         # Crop variables
@@ -89,8 +105,8 @@ class CupHeadEnvironment(object):
         self.upper_red = np.array([71, 255, 198])
 
         # Transforms pour les states
-        self.resize_w = 128
-        self.resize_h = self.resize_w 
+        self.resize_w = resize_w
+        self.resize_h = resize_h 
         TR_ARRAY2TENSOR = ToTensor()
         TR_COLOR2GRAY = Grayscale()
         TR_RESIZE = Resize((self.resize_h,self.resize_w))
@@ -98,7 +114,8 @@ class CupHeadEnvironment(object):
         self.transform = Compose(TR_LIST)
 
         # Variables des timing FPS et skip frame
-        self.dim_state = 1
+        self.dim_state = dim_state
+        self.episode_time_limite = episode_time_limite
 
     def take_screenshot(self):
         with mss.mss() as sct:
@@ -114,12 +131,14 @@ class CupHeadEnvironment(object):
         # time.sleep(0.5)
         # pg.press('enter') # temps du sleep est ok ?
         time.sleep(2)
-        img = self.take_screenshot()                                # A MODIFIER EN FONCTION DE L ETAT A ENVOYNER CHOISI ET DES TRANSFORMES
-        return self.transform(img) 
+        # img = self.take_screenshot()                                # A MODIFIER EN FONCTION DE L ETAT A ENVOYNER CHOISI ET DES TRANSFORMES
+        # img = self.transform(img).shape
+        img_tensor = torch.zeros((self.dim_state,self.resize_h, self.resize_w))
+        return img_tensor
     
     def holdKeys(*keys,seconds=0.1):
         for key in keys:
-            print(key) ; exit()
+            print(key) 
             pg.keyDown(key)
         time.sleep(seconds)
         for key in keys:
@@ -165,34 +184,33 @@ class CupHeadEnvironment(object):
     def act_in_environment(self, action_idx, seconds=0.1):
         keys = self.actions_list[action_idx]
         timing = self.hold_timings[action_idx]
-        for key in keys:
-            pg.keyDown(key)
-        time.sleep(timing)
-        for key in keys:
-            pg.keyUp(key)
+        if self.controls_enabled == True:
+            for key in keys:
+                pg.keyDown(key)
+            time.sleep(timing)
+            for key in keys:
+                pg.keyUp(key)
 
-    def step(self,action_idx, current_hp):    # correspond à un épisode, renvoie : next_state, reward, done, trunc, info
+    def step(self,action_idx, current_hp, temps):    # correspond à un épisode, renvoie : next_state, reward, done, trunc, info
         done = False
         reward = 0
-        # time.sleep(self.time_for_step)
 
         # Mise a jour de l'image via capture d'écran 
 
         img = self.take_screenshot()
+        # print_img(img)
+        # print(img.shape) ; exit()
 
         # Game Over
 
         if self.is_GameOver(img) : 
             done = True
-            cv2.imwrite('test.png',img)
             print("You Died !")
-            time.sleep(2)
+            time.sleep(3)
             img = self.take_screenshot()
             progression = self.compute_progression(img)
-            print("Progression : ") 
-            reward += int(20*progression)
-            print("PROGRESSION ",progression)
-            info = "gameover"
+            reward += int(40*progression)
+            print(f"PROGRESSION : {progression:.4f}")
             pg.press('enter') # recommencer une partie en pressant entrer sur Retry
         
         # Game Win
@@ -209,13 +227,7 @@ class CupHeadEnvironment(object):
             reward += -5
             current_hp -= 1
 
-
         # Action de l'agent
-
-
-        # action_idx = 0
-        # if int(temps)%3==0:
-        #     self.act_in_environment(action_idx)
 
         self.act_in_environment(action_idx)
         
@@ -224,12 +236,17 @@ class CupHeadEnvironment(object):
         next_state = torch.zeros(self.dim_state,self.resize_h,self.resize_w)
         for k in range(self.dim_state):
             next_state[k] = self.transform(self.take_screenshot()) 
-
-
         
+
+        # Limite de temps pour un épisode atteinte
+
+        if temps > self.episode_time_limite:
+            done = True
+            reward += -10 
+            print("Time limite reached, reseting...")
+
         return next_state, reward, done, current_hp
     
-
 
 if __name__ == '__main__':
 

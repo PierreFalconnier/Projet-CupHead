@@ -48,7 +48,7 @@ class CupHeadNet(nn.Module):
         #     nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1),
         #     nn.ReLU(),
         #     nn.Flatten(),
-        #     nn.Linear(self.compute_linear_dimensions(), 512),
+        #     nn.Linear(3136, 512),
         #     nn.ReLU(),
         #     nn.Linear(512, output_dim),
         # )
@@ -70,7 +70,7 @@ class CupHeadNet(nn.Module):
         for k in range(len(self.kernel_size_list)):
             h = math.floor(1+(h+2*0-1*(self.kernel_size_list[k]-1)-1)/self.stride_size_list[k])
         linear_dimension = h*h*self.out_channels_list[-1]
-        print(linear_dimension) 
+        # print(linear_dimension) 
         return linear_dimension
     
 
@@ -79,11 +79,14 @@ class CupHeadNet(nn.Module):
 if __name__=='__main__':
     import torch
     from agent import CupHead
-
-
-    SHAPE = (1,84,84)
+    SHAPE = (1,2,84,84)   # B T H W
     DIM_OUT = 5
-    MODEL = CupHeadNet(SHAPE,DIM_OUT).float()
-    print(MODEL.compute_linear_dimensions) 
+    MODEL = CupHeadNet(SHAPE[1:],DIM_OUT).float()
     T = torch.rand(SHAPE)
+    # for elem in MODEL.online:
+    #     T = elem(T)
+    #     print(T.shape)
+    #     print(elem)
+    # exit()
+    print(MODEL.compute_linear_dimensions) 
     print(MODEL(T, "online"))

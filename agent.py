@@ -9,7 +9,19 @@ from collections import deque
 # Agent class
 
 class CupHead(object):
-    def __init__(self, state_dim, action_dim, save_dir):
+    def __init__(
+        self,
+        state_dim, 
+        action_dim, 
+        save_dir,
+        exploration_rate_decay=0.99999975,
+        exploration_rate_min=0.1,
+        batch_size=32,
+        gamma=0.9,
+        burnin=1e2,
+        learn_every=3,
+        sync_every=1e2):
+
         ## act()
         self.state_dim = state_dim
         self.action_dim = action_dim
@@ -22,8 +34,8 @@ class CupHead(object):
         self.net = self.net.to(device=self.device)
 
         self.exploration_rate = 1
-        self.exploration_rate_decay = 0.99999975
-        self.exploration_rate_min = 0.1
+        self.exploration_rate_decay = exploration_rate_decay
+        self.exploration_rate_min = exploration_rate_min
         self.curr_step = 0
 
         self.save_every = 5e5  # no. of experiences between saving Mario Net
@@ -31,11 +43,11 @@ class CupHead(object):
         ## cache() and recall()
 
         self.memory = deque(maxlen=100000)
-        self.batch_size = 32
+        self.batch_size = batch_size
 
         ## td_estimate and td_target()
 
-        self.gamma = 0.9
+        self.gamma = gamma
 
         ## update_Q_online() and sync_Q_online
 
@@ -44,9 +56,9 @@ class CupHead(object):
 
         ## learn()
 
-        self.burnin = 1e2  # min. experiences before training
-        self.learn_every = 3  # no. of experiences between updates to Q_online
-        self.sync_every = 1e2  # no. of experiences between Q_target & Q_online sync
+        self.burnin = burnin  # min. steps before training
+        self.learn_every = learn_every  # no. of steps between updates to Q_online
+        self.sync_every = sync_every  # no. of steps between Q_target & Q_online sync
 
 
 
@@ -89,10 +101,10 @@ class CupHead(object):
         reward (float),
         done(bool))
         """
-        def first_if_tuple(x):
-            return x[0] if isinstance(x, tuple) else x
-        state = first_if_tuple(state).__array__()
-        next_state = first_if_tuple(next_state).__array__()
+        # def first_if_tuple(x):
+        #     return x[0] if isinstance(x, tuple) else x
+        # state = first_if_tuple(state).__array__()
+        # next_state = first_if_tuple(next_state).__array__()
 
         state = torch.tensor(state, device=self.device)
         next_state = torch.tensor(next_state, device=self.device)
