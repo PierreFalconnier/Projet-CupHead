@@ -50,6 +50,8 @@ class CupHeadEnvironment(object):
 
     def __init__(
         self,
+        screen_shot_width = 1920,
+        screen_shot_height = 1080,
         resize_w=128,
         resize_h=128,
         dim_state=1,
@@ -60,15 +62,20 @@ class CupHeadEnvironment(object):
         # Actions
         # self.actions_list = [["right"],["left"],["up"],["down"],["s"],["z"],["shiftleft"],["z","right"],["z","left"]]   # s correspond à 'still', cuphead ne fait rien
         # self.hold_timings = [0.75,   0.75,  0.3, 0.3,   0.75,  0.75,   0.1,      0.65,          0.65]
-        self.actions_list = [["right"],["left"],["z"],["z","right"],["shiftleft"]]   # s correspond à 'still', cuphead ne fait rien
-        self.hold_timings = [0.75,   0.1,      0.75,        0.65,0.1]
+        # self.actions_list = [["right"],["left"],["left"],["z"],["z","right"],["shiftleft"]]   # s correspond à 'still', cuphead ne fait rien
+        # self.hold_timings = [0.75,   0.75,        0.1,    0.75,      0.65,        0.1]
+       
+        self.actions_list = [["right"],["left"],["left"],["z"],["z","right"]]   # s correspond à 'still', cuphead ne fait rien
+        self.hold_timings = [0.75,   0.75,        0.1,    0.75,      0.65   ]
+       
         self.actions_dim = len(self.actions_list)
         self.controls_enabled = controls_enabled   # si True, le programme utilie PyAutoGUI et controle le clavier
 
         # Crop variables and screen shot
         # self.mon = {'top': 0, 'left': 0, 'width': 1920, 'height': 1080} 
         # self.mon = {'top': 0, 'left': 0, 'width': 1600, 'height': 900} 
-        self.mon = {'top': 0, 'left': 0, 'width': 960, 'height': 540} 
+        # self.mon = {'top': 0, 'left': 0, 'width': 960, 'height': 540} 
+        self.mon = {'top': 0, 'left': 0, 'width': screen_shot_width, 'height': screen_shot_height} 
 
         img = self.take_screenshot()
 
@@ -94,11 +101,11 @@ class CupHeadEnvironment(object):
         self.w_max_hp = int(img.shape[0]*137/1080)
 
         # Images for correlations
-        self.img_shift = cv2.imread('shift.png')
-        self.img_win = cv2.imread('the_from_win_screen.png')
-        self.img_1hp_1 = cv2.imread('1hp_1.png')
-        self.img_1hp_2 = cv2.imread('1hp_2.png')
-        self.img_2hp = cv2.imread('2hp.png')
+        self.img_shift = cv2.imread('images/shift.png')
+        self.img_win = cv2.imread('images/the_from_win_screen.png')
+        self.img_1hp_1 = cv2.imread('images/1hp_1.png')
+        self.img_1hp_2 = cv2.imread('images/1hp_2.png')
+        self.img_2hp = cv2.imread('images/2hp.png')
 
         # Progression bar threshold
         self.lower_red = np.array([0, 197, 116])
@@ -198,8 +205,6 @@ class CupHeadEnvironment(object):
         # Mise a jour de l'image via capture d'écran 
 
         img = self.take_screenshot()
-        # print_img(img)
-        # print(img.shape) ; exit()
 
         # Game Over
 
@@ -208,8 +213,9 @@ class CupHeadEnvironment(object):
             print("You Died !")
             time.sleep(3)
             img = self.take_screenshot()
-            progression = self.compute_progression(img)
-            reward += int(40*progression)
+            progression = self.compute_progression(img)             
+            # reward += int(40*progression)                           # reward en fonction dela progression
+            reward += -10
             print(f"PROGRESSION : {progression:.4f}")
             pg.press('enter') # recommencer une partie en pressant entrer sur Retry
         
@@ -225,11 +231,13 @@ class CupHeadEnvironment(object):
         
         if self.is_health_point_lost(current_hp=current_hp, img=img):
             reward += -5
-            current_hp -= 1
+            current_hp += -1
 
         # Action de l'agent
 
         self.act_in_environment(action_idx)
+        if action_idx in [0,4] :
+            reward += 0.4                       # récompense pour avancer
         
         # Génération de l'état suivant
 

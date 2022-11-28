@@ -28,18 +28,30 @@ logger = MetricLogger(save_dir)
 
 # Hyperparameters
 
+# SCREEN_SHOT_WIDTH = 960
+# SCREEN_SHOT_HEIGHT =  540
+SCREEN_SHOT_WIDTH = 1920
+SCREEN_SHOT_HEIGHT = 1080
 RESIZE_H = 128
 RESIZE_W = 128
 DIM_STATE = 2
 CONTROLS_ENABLED = True  # Mettre False pour des tests sans utiliser le jeu
 EPISODE_TIME_LIMITE = 180
 
-env = CupHeadEnvironment(resize_h=RESIZE_H, resize_w=RESIZE_W, dim_state=DIM_STATE,controls_enabled=CONTROLS_ENABLED, episode_time_limite=EPISODE_TIME_LIMITE)
+env = CupHeadEnvironment(
+    screen_shot_width=SCREEN_SHOT_WIDTH,
+    screen_shot_height=SCREEN_SHOT_HEIGHT,
+    resize_h=RESIZE_H,
+    resize_w=RESIZE_W,
+    dim_state=DIM_STATE,
+    controls_enabled=CONTROLS_ENABLED,
+    episode_time_limite=EPISODE_TIME_LIMITE,
+    )
 
-EXPLORATION_RATE_DECAY = 0.997
+EXPLORATION_RATE_DECAY = 0.9997
 EXPLORATION_RATE_MIN = 0.1
 BATCH_SIZE = 32
-GAMMA = 0.9
+GAMMA = 0.7
 BURNIN = 100  # min. steps before training
 LEARN_EVERY = 3  # no. of steps between updates to Q_online
 SYNC_EVERY = 1e2  # no. of steps between Q_target & Q_online sync
@@ -53,10 +65,15 @@ cuphead = CupHead(
     burnin=BURNIN,
     )
 
+# Load previous model
+
+# STAT_DICT_MODEL_PATH = '/home/pierre/Documents/perso/cuphead/checkpoints/2022-11-26T18-04-06/model_cuphead_stat_dict.pt' 
+# cuphead.net.load_state_dict(torch.load(STAT_DICT_MODEL_PATH))
 
 # Start
 
 episodes = 1000
+previous_loss = None
 if CONTROLS_ENABLED:
     print("Go on the game !...")
     time.sleep(5)
@@ -122,9 +139,13 @@ for e in range(episodes):
 
     logger.log_episode()
 
-    if e % 10 == 0:
+    if e % 5 == 0:
         logger.record(episode=e, epsilon=cuphead.exploration_rate, step=cuphead.curr_step)
-        torch.save(cuphead.net.state_dict(), os.path.join(save_dir,'model_cuphead.pt'))
+        if loss and previous_loss and loss<previous_loss :                                      # sauve que si amélioration
+            torch.save(cuphead.net.state_dict(), os.path.join(save_dir,'model_cuphead_stat_dict.pt'))
+    
+    if loss:
+        previous_loss = loss
 
 
 
