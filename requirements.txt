@@ -1,0 +1,7 @@
+pyautogui
+keyboard
+matplotlib
+torch
+opencv-python
+mss
+torchvision
