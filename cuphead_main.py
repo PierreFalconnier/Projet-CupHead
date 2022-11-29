@@ -13,6 +13,7 @@ from environment import CupHeadEnvironment
 import os
 
 
+
 # CUR_DIR_PATH = Path(__file__).resolve()
 # save_dir = os.path.join(CUR_DIR_PATH, "save")
 
@@ -38,6 +39,14 @@ DIM_STATE = 2
 CONTROLS_ENABLED = True  # Mettre False pour des tests sans utiliser le jeu
 EPISODE_TIME_LIMITE = 180
 
+REWARD_DICT = {
+    'Health_point_lost':-10,
+    'GameWin' : 100,
+    'GameOver' : -20,
+    'Forward': 0.1
+    }
+
+
 env = CupHeadEnvironment(
     screen_shot_width=SCREEN_SHOT_WIDTH,
     screen_shot_height=SCREEN_SHOT_HEIGHT,
@@ -46,9 +55,10 @@ env = CupHeadEnvironment(
     dim_state=DIM_STATE,
     controls_enabled=CONTROLS_ENABLED,
     episode_time_limite=EPISODE_TIME_LIMITE,
+    reward_dict=REWARD_DICT,
     )
 
-EXPLORATION_RATE_DECAY = 0.9997
+EXPLORATION_RATE_DECAY = 0.999965   # 0.5 proba reached after 20 000 steps
 EXPLORATION_RATE_MIN = 0.1
 BATCH_SIZE = 32
 GAMMA = 0.7
@@ -67,17 +77,14 @@ cuphead = CupHead(
 
 # Load previous model
 
-# STAT_DICT_MODEL_PATH = '/home/pierre/Documents/perso/cuphead/checkpoints/2022-11-26T18-04-06/model_cuphead_stat_dict.pt' 
-# cuphead.net.load_state_dict(torch.load(STAT_DICT_MODEL_PATH))
+STAT_DICT_MODEL_PATH = 'checkpoints/2022-11-29T13-38-03/model_cuphead_stat_dict.pt' 
+cuphead.net.load_state_dict(torch.load(STAT_DICT_MODEL_PATH))
 
 # Start
-
 episodes = 1000
 previous_loss = None
-if CONTROLS_ENABLED:
-    print("Go on the game !...")
-    time.sleep(5)
-    print("Training time !")
+
+print("Training time !")
 
 for e in range(episodes):
 
@@ -86,7 +93,7 @@ for e in range(episodes):
     start_time = time.time()
     prev_frame_time = time.time()
     temps = 0
-    current_hp = 2
+    current_hp = 3
     state = env.reset_episode()
     if CONTROLS_ENABLED :
         pg.keyDown('x')
@@ -112,28 +119,21 @@ for e in range(episodes):
         # Update state
         state = next_state
 
+        plt.figure()
+        plt.imshow(state[0].numpy())
+        plt.show()
+        exit()
 
-        # # Vérifications en direct
+        # # Vérifications en dirxect
         # print("------------")
         # print("Step ",cuphead.curr_step,"q ",q,"Loss ",loss)
         # print("Action ",env.actions_list[action_idx],"Reward ", reward,"Current HP ", current_hp)
-      
 
         # Check if end of game
         if done:
             # print("Step ",cuphead.curr_step,"q ",q,"Loss ",loss)
             # print("Action ",env.actions_list[action_idx],"Reward ", reward,"Current HP ", current_hp)
             break
-
-        # Calcul FPS
-
-        # new_frame_time = time.time()
-        # fps = 1/(new_frame_time-prev_frame_time)
-        # prev_frame_time = new_frame_time
-        # fps = str(int(fps))
-        # os.system('clear')
-        # print("FPS : ",fps)
-        # print("Current HP : ",current_hp)
 
         temps = time.time()-start_time
 

@@ -5,3 +5,4 @@ torch
 opencv-python
 mss
 torchvision
+pywin32

@@ -10,12 +10,15 @@ import cv2
 import PIL
 import numpy as np
 import os
-import mss
 from agent import CupHead
 
-from torchvision.transforms import ToTensor, Resize, Grayscale
-from torchvision.transforms import Compose
+from torchvision.transforms import ToTensor, Resize, Grayscale, Compose
 import torch
+
+if os.name == 'nt':
+    from mss.windows import MSS as mss
+else:
+    from mss.linux import MSS as mss
 
 
 # Maintenir une touche un certain temps
@@ -57,6 +60,7 @@ class CupHeadEnvironment(object):
         dim_state=1,
         controls_enabled = True,
         episode_time_limite = 180,
+        reward_dict={},
         ) -> None:
 
         # Actions
@@ -77,7 +81,9 @@ class CupHeadEnvironment(object):
         # self.mon = {'top': 0, 'left': 0, 'width': 960, 'height': 540} 
         self.mon = {'top': 0, 'left': 0, 'width': screen_shot_width, 'height': screen_shot_height} 
 
-        img = self.take_screenshot()
+        with mss() as sct:
+            bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
+            img =  np.flip(bgra_array[:, :, :3], 2)
 
         # Crop variables
         self.w_min_bar = int(img.shape[1]*812/2560)
@@ -115,7 +121,7 @@ class CupHeadEnvironment(object):
         self.resize_w = resize_w
         self.resize_h = resize_h 
         TR_ARRAY2TENSOR = ToTensor()
-        TR_COLOR2GRAY = Grayscale()
+        TR_COLOR2GRAY = Grayscale()                         # image en float entre 0 et 1, shape B H W
         TR_RESIZE = Resize((self.resize_h,self.resize_w))
         TR_LIST = [TR_ARRAY2TENSOR,TR_COLOR2GRAY,TR_RESIZE]
         self.transform = Compose(TR_LIST)
@@ -124,12 +130,21 @@ class CupHeadEnvironment(object):
         self.dim_state = dim_state
         self.episode_time_limite = episode_time_limite
 
+        # Reward dictionary
+        self.reward_dict = reward_dict
+
+        ## Exemple :
+        #REWARD_DICT = {
+        # 'Health_point_lost':-10,
+        # 'GameWin' : 100,
+        # 'GameOver' : -20,
+        # 'Forward': 1
+        #}
+
     def take_screenshot(self):
-        with mss.mss() as sct:
-            img = sct.grab(self.mon)         
-            img = np.array(img)
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-            return img
+        with mss() as sct:
+            frame = np.array(sct.grab(self.mon)  , dtype=np.uint8)
+            return np.flip(frame[:, :, :3], 2)     
     
     def reset_episode(self):
         # pg.press('esc')  # vérifier si pas plutôt 'escape'
@@ -138,8 +153,6 @@ class CupHeadEnvironment(object):
         # time.sleep(0.5)
         # pg.press('enter') # temps du sleep est ok ?
         time.sleep(2)
-        # img = self.take_screenshot()                                # A MODIFIER EN FONCTION DE L ETAT A ENVOYNER CHOISI ET DES TRANSFORMES
-        # img = self.transform(img).shape
         img_tensor = torch.zeros((self.dim_state,self.resize_h, self.resize_w))
         return img_tensor
     
@@ -202,119 +215,72 @@ class CupHeadEnvironment(object):
         done = False
         reward = 0
 
-        # Mise a jour de l'image via capture d'écran 
 
-        img = self.take_screenshot()
+        with mss() as sct:
 
-        # Game Over
+            # Mise a jour de l'image via capture d'écran 
 
-        if self.is_GameOver(img) : 
-            done = True
-            print("You Died !")
-            time.sleep(3)
-            img = self.take_screenshot()
-            progression = self.compute_progression(img)             
-            # reward += int(40*progression)                           # reward en fonction dela progression
-            reward += -10
-            print(f"PROGRESSION : {progression:.4f}")
-            pg.press('enter') # recommencer une partie en pressant entrer sur Retry
-        
-        # Game Win
+            bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
+            img =  np.flip(bgra_array[:, :, :3], 2)
 
-        if self.is_GameWin(img):
-            done = True
-            reward += 20
-            print("GG ! You won !")
-            exit()      # dans un premier temps, cuphead n'arrivera pas jusqu'ici...
-        
-        # Perte d'HP
-        
-        if self.is_health_point_lost(current_hp=current_hp, img=img):
-            reward += -5
-            current_hp += -1
+            # Game Over
 
-        # Action de l'agent
+            if self.is_GameOver(img) : 
+                done = True
+                print("You Died !")
+                time.sleep(3)
+                bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
+                img =  np.flip(bgra_array[:, :, :3], 2)
+                progression = self.compute_progression(img)             
+                # reward += int(40*progression)                           # reward en fonction dela progression
+                reward +=  self.reward_dict['GameOver']
+                print(f"PROGRESSION : {progression:.4f}")
+                pg.press('enter') # recommencer une partie en pressant entrer sur Retry
+            
+            # Game Win
 
-        self.act_in_environment(action_idx)
-        if action_idx in [0,4] :
-            reward += 0.4                       # récompense pour avancer
-        
-        # Génération de l'état suivant
+            if self.is_GameWin(img):
+                done = True
+                reward += self.reward_dict['GameWin']
+                print("GG ! You won !")
+                exit()      # dans un premier temps, cuphead n'arrivera pas jusqu'ici...
+            
+            # Perte d'HP
+            
+            if self.is_health_point_lost(current_hp=current_hp, img=img):
+                reward += self.reward_dict['Health_point_lost']
+                current_hp += -1
 
-        next_state = torch.zeros(self.dim_state,self.resize_h,self.resize_w)
-        for k in range(self.dim_state):
-            next_state[k] = self.transform(self.take_screenshot()) 
-        
+            # Action de l'agent
 
-        # Limite de temps pour un épisode atteinte
+            self.act_in_environment(action_idx)
+            if action_idx in [0,4] :
+                reward += self.reward_dict['Forward']                      # récompense pour avancer
+            
+            # Génération de l'état suivant
 
-        if temps > self.episode_time_limite:
-            done = True
-            reward += -10 
-            print("Time limite reached, reseting...")
+            next_state = torch.zeros(self.dim_state,self.resize_h,self.resize_w)
+            for k in range(self.dim_state):
+                bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
+                img =  np.flip(bgra_array[:, :, :3], 2).copy()  # copy pour régler le pb des srides négatifs par géré par torch
+                next_state[k] = self.transform(img.copy()) 
+            
 
-        return next_state, reward, done, current_hp
+            # Limite de temps pour un épisode atteinte
+
+            if temps > self.episode_time_limite:
+                done = True
+                reward += -10 
+                print("Time limite reached, reseting...")
+
+            return next_state, reward, done, current_hp
     
 
 if __name__ == '__main__':
 
-
-    # Environnement
     env = CupHeadEnvironment()
-    print("Go on the game !...")
-    time.sleep(5)
 
-    # # Test des actions
-    # for k in range(env.actions_dim):
-    #     print(k)
-    #     time.sleep(2)
-    #     env.act_in_environment(k)
+    img_array = env.take_screenshot()
 
-    env.reset_episode()
-    exit()
+
     
-    # Agent
-    # cuphead = CupHead()
-    current_hp = 3
-
-    # Test
-    start_time = time.time()
-    prev_frame_time = time.time()
-    temps = 0
-    time_limite = 180
-    print("Go on the game !")
-    # time.sleep(5)
-
-    state = env.reset_episode()
-
-    while temps<time_limite :  # seuil temps maximal en secondes
-
-        # action_idx = cuphead.act(state)
-
-
-        next_state, reward, done, current_hp = env.step(action_idx=0, current_hp = current_hp)
-        # print(next_state.shape) ; exit()
-        
-
-
-        # Calcul FPS
-        new_frame_time = time.time()
-        fps = 1/(new_frame_time-prev_frame_time)
-        prev_frame_time = new_frame_time
-        fps = str(int(fps))
-        os.system('clear')
-        print("FPS : ",fps)
-        print("Current HP : ",current_hp)
-
-        temps = time.time()-start_time
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
-    cv2.destroyAllWindows()
-    print("Time limite atteinte")
-
-
-
-# TODO : ajouter une option de skip image
-# TODO : créer la varible state formée de plusieurs images (concaténation de tenseurs)
-# TODO : prendre en compte le temps dans les rewards ?
