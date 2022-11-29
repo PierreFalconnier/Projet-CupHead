@@ -40,10 +40,10 @@ CONTROLS_ENABLED = True  # Mettre False pour des tests sans utiliser le jeu
 EPISODE_TIME_LIMITE = 180
 
 REWARD_DICT = {
-    'Health_point_lost':-10,
-    'GameWin' : 100,
-    'GameOver' : -20,
-    'Forward': 0.1
+    'Health_point_lost': -10,
+    'GameWin' :          100,
+    'GameOver' :         -20,
+    'Forward':           0.1,
     }
 
 
@@ -84,6 +84,16 @@ cuphead.net.load_state_dict(torch.load(STAT_DICT_MODEL_PATH))
 episodes = 1000
 previous_loss = None
 
+if CONTROLS_ENABLED:
+    if os.name == 'nt':
+        import pygetwindow as gw
+        window = gw.getWindowsWithTitle('Cuphead')[-1]
+        window.restore()
+    else:
+        print("LINUX")
+        print("Go on the game...")
+        time.sleep(5)
+
 print("Training time !")
 
 for e in range(episodes):
@@ -119,10 +129,10 @@ for e in range(episodes):
         # Update state
         state = next_state
 
-        plt.figure()
-        plt.imshow(state[0].numpy())
-        plt.show()
-        exit()
+        # plt.figure()
+        # plt.imshow(state[0].numpy())
+        # plt.show()
+        # exit()
 
         # # Vérifications en dirxect
         # print("------------")

@@ -53,10 +53,16 @@ def screenshot_process(img):
 
 if __name__=='__main__':
    
-    # print(gw.getAllTitles()) # nom de la fenêtre = 'Cuphead'
-    # print(gw.getWindowsWithTitle('Cuphead'))
-    # window = gw.getWindowsWithTitle('Cuphead')[-1]
-    # window.activate()
+    print(gw.getAllTitles()) # nom de la fenêtre = 'Cuphead'
+
+
+
+    print(gw.getWindowsWithTitle('Cuphead'))
+
+    window = gw.getWindowsWithTitle('Cuphead')[-1]
+    window.restore()
+    exit()
+
 
     if os.name == 'nt':
         print("OS = WINDOWS")
