@@ -30,7 +30,7 @@ SCREEN_SHOT_HEIGHT = 1080
 RESIZE_H = 128
 RESIZE_W = 128
 DIM_STATE = 3
-CONTROLS_ENABLED = False  # Mettre False pour des tests sans utiliser le jeu
+CONTROLS_ENABLED = True  # Mettre False pour des tests sans utiliser le jeu
 EPISODE_TIME_LIMITE = 180
 
 REWARD_DICT = {
@@ -112,9 +112,11 @@ previous_loss = None
 if CONTROLS_ENABLED:
     if os.name == 'nt':
         print("WINDOWS")
-        import pygetwindow as gw
-        window = gw.getWindowsWithTitle('Cuphead')[-1]
-        window.restore()
+        # import pygetwindow as gw
+        # window = gw.getWindowsWithTitle('Cuphead')[-1]
+        # window.restore()
+        print("Go on the game...")
+        time.sleep(5)
     else:
         print("LINUX")
         print("Go on the game...")
