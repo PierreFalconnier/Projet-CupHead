@@ -13,21 +13,27 @@ class CupHead(object):
         self,
         state_dim, 
         action_dim, 
-        save_dir,
+        save_dir='trash',
         exploration_rate_decay=0.99999975,
         exploration_rate_min=0.1,
         batch_size=32,
         gamma=0.9,
         burnin=1e2,
         learn_every=3,
-        sync_every=1e2):
+        learning_rate = 0.001,
+        sync_every=1e2,
+        device = "cuda",
+        ):
 
         ## act()
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.save_dir = save_dir
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        if device == "cuda":
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        else :
+            self.device = device
 
         # CupHead's DNN to predict the most optimal action
         self.net = CupHeadNet(self.state_dim, self.action_dim).float()
@@ -42,7 +48,7 @@ class CupHead(object):
 
         ## cache() and recall()
 
-        self.memory = deque(maxlen=100000)
+        self.memory = deque(maxlen=100000)    # mémoire occupée : 100 000 * 80 bytes = 7,629394531 MBytes < 16 Mbytes
         self.batch_size = batch_size
 
         ## td_estimate and td_target()
@@ -51,7 +57,7 @@ class CupHead(object):
 
         ## update_Q_online() and sync_Q_online
 
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.001)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=learning_rate)
         self.loss_fn = torch.nn.SmoothL1Loss()
 
         ## learn()

@@ -57,10 +57,12 @@ class CupHeadEnvironment(object):
         screen_shot_height = 1080,
         resize_w=128,
         resize_h=128,
-        dim_state=1,
+        dim_state=2,
         controls_enabled = True,
         episode_time_limite = 180,
         reward_dict={},
+        actions_list = [],
+        hold_timings = [],
         ) -> None:
 
         # Actions
@@ -69,16 +71,14 @@ class CupHeadEnvironment(object):
         # self.actions_list = [["right"],["left"],["left"],["z"],["z","right"],["shiftleft"]]   # s correspond à 'still', cuphead ne fait rien
         # self.hold_timings = [0.75,   0.75,        0.1,    0.75,      0.65,        0.1]
        
-        self.actions_list = [["right"],["left"],["left"],["z"],["z","right"]]   # s correspond à 'still', cuphead ne fait rien
-        self.hold_timings = [0.75,   0.75,        0.1,    0.75,      0.65   ]
+        self.actions_list = actions_list  
+        self.hold_timings = hold_timings
        
         self.actions_dim = len(self.actions_list)
         self.controls_enabled = controls_enabled   # si True, le programme utilie PyAutoGUI et controle le clavier
 
         # Crop variables and screen shot
-        # self.mon = {'top': 0, 'left': 0, 'width': 1920, 'height': 1080} 
-        # self.mon = {'top': 0, 'left': 0, 'width': 1600, 'height': 900} 
-        # self.mon = {'top': 0, 'left': 0, 'width': 960, 'height': 540} 
+    
         self.mon = {'top': 0, 'left': 0, 'width': screen_shot_width, 'height': screen_shot_height} 
 
         with mss() as sct:
