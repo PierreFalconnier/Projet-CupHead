@@ -13,7 +13,6 @@ import os
 import mss
 from subprocess import check_output
 
-import win32gui
 import re
 import math
 import os
@@ -52,22 +51,17 @@ def screenshot_process(img):
 
 
 if __name__=='__main__':
-   
-    print(gw.getAllTitles()) # nom de la fenêtre = 'Cuphead'
-
-
-
-    print(gw.getWindowsWithTitle('Cuphead'))
-
-    window = gw.getWindowsWithTitle('Cuphead')[-1]
-    window.restore()
-    exit()
-
 
     if os.name == 'nt':
-        print("OS = WINDOWS")
+        from mss.windows import MSS as mss
+        import win32gui
+        print(gw.getAllTitles()) # nom de la fenêtre = 'Cuphead'
+        print(gw.getWindowsWithTitle('Cuphead'))
+        window = gw.getWindowsWithTitle('Cuphead')[-1]
+        window.restore()
     else:
-        print("OS = Linux")
+        from mss.linux import MSS as mss
+
 
     step = 20000
     proba = 0.5
@@ -75,11 +69,6 @@ if __name__=='__main__':
 
     print("STEPS needed to reach proba : ",math.log(proba)/math.log(rate))
     print("Rate to reach proba after given step : ", proba**(1/step))
-
-    if os.name == 'nt':
-        from mss.windows import MSS as mss
-    else:
-        from mss.linux import MSS as mss
 
     with mss() as sct:
         im = sct.grab(sct.monitors[1])
