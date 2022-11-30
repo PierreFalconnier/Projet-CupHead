@@ -7,35 +7,35 @@ import torch
 from agent import CupHead
 from environment import CupHeadEnvironment
 import os
+from pathlib import Path
 
 
 # CUR_DIR_PATH = Path(__file__).resolve()
 # save_dir = os.path.join(CUR_DIR_PATH, "save")
 
-use_cuda = torch.cuda.is_available()
-print(f"Using CUDA: {use_cuda}")
-print()
+# Load config dictionary
 
+CHECKPOINT_PATH = Path("checkpoints") / "2022-11-30T01-29-39"
+# CHECKPOINT_PATH = Path("checkpoints") / "2022-11-29T13-38-03"
+dict_config = torch.load(os.path.join(CHECKPOINT_PATH /'dict_config.pt'))
+
+ACTION_LIST= dict_config['ACTION_LIST']
+HOLD_TIMINGS= dict_config['HOLD_TIMINGS']
+SCREEN_SHOT_WIDTH= dict_config['SCREEN_SHOT_WIDTH']
+SCREEN_SHOT_HEIGHT= dict_config['SCREEN_SHOT_HEIGHT']
+RESIZE_H= dict_config['RESIZE_H']
+RESIZE_W= dict_config['RESIZE_W']
+DIM_STATE = dict_config['DIM_STATE']
+CONTROLS_ENABLED = True  
+EPISODE_TIME_LIMITE = dict_config['EPISODE_TIME_LIMITE']
+REWARD_DICT = dict_config['REWARD_DICT']
+EXPLORATION_RATE_DECAY = 0   
+EXPLORATION_RATE_MIN = 0
+# DEVICE = dict_config['DEVICE']
+DEVICE = 'cpu'
 pg.PAUSE = 0
 
-# Hyperparameters
-
-# SCREEN_SHOT_WIDTH = 960
-# SCREEN_SHOT_HEIGHT =  540
-SCREEN_SHOT_WIDTH = 1920
-SCREEN_SHOT_HEIGHT = 1080
-RESIZE_H = 128
-RESIZE_W = 128
-DIM_STATE = 2
-CONTROLS_ENABLED = True  # Mettre False pour des tests sans utiliser le jeu
-EPISODE_TIME_LIMITE = 180
-
-REWARD_DICT = {
-    'Health_point_lost': -10,
-    'GameWin' :          100,
-    'GameOver' :         -20,
-    'Forward':           0.1,
-    }
+# Environment and Agent
 
 env = CupHeadEnvironment(
     screen_shot_width=SCREEN_SHOT_WIDTH,
@@ -46,18 +46,22 @@ env = CupHeadEnvironment(
     controls_enabled=CONTROLS_ENABLED,
     episode_time_limite=EPISODE_TIME_LIMITE,
     reward_dict=REWARD_DICT,
+    actions_list=ACTION_LIST,
+    hold_timings=HOLD_TIMINGS,
     )
 
 cuphead = CupHead(
     state_dim=(env.dim_state, env.resize_h, 
     env.resize_w), 
     action_dim=env.actions_dim, 
-    exploration_rate_decay= 0,
+    exploration_rate_decay= EXPLORATION_RATE_DECAY,
+    exploration_rate_min=EXPLORATION_RATE_MIN,
+    device=DEVICE,
     )
 
 # Load previous model
 
-STAT_DICT_MODEL_PATH = 'checkpoints/2022-11-29T13-38-03/model_cuphead_stat_dict.pt' 
+STAT_DICT_MODEL_PATH = CHECKPOINT_PATH / 'model_cuphead_stat_dict.pt' 
 cuphead.net.load_state_dict(torch.load(STAT_DICT_MODEL_PATH))
 
 # Start
@@ -74,7 +78,7 @@ if CONTROLS_ENABLED:
         print("Go on the game...")
         time.sleep(5)
 
-print("Training time !")
+print("Playing time !")
 
 for e in range(episodes):
 

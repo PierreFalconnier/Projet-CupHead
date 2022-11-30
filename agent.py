@@ -32,6 +32,9 @@ class CupHead(object):
 
         if device == "cuda":
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            use_cuda = torch.cuda.is_available()
+            print(f"Using CUDA: {use_cuda}")
+            print()
         else :
             self.device = device
 

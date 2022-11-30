@@ -11,9 +11,6 @@ from metric_logger import MetricLogger
 from environment import CupHeadEnvironment
 import os, sys
 
-use_cuda = torch.cuda.is_available()
-print(f"Using CUDA: {use_cuda}")
-print()
 
 save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
 save_dir.mkdir(parents=True)
@@ -97,6 +94,7 @@ dict_config = {
     'LEARN_EVERY' : LEARN_EVERY ,
     'SYNC_EVERY' : SYNC_EVERY  ,
     'LEARNING_RATE' : LEARNING_RATE,
+    'DEVICE' : DEVICE,
 }
 torch.save(dict_config, save_dir / 'dict_config.pt')
 
