@@ -21,35 +21,6 @@ import numpy
 from PIL import Image
 
 
-
-def mss_rgb(im):
-    """ Better than Numpy versions, but slower than Pillow. """
-    return im.rgb
-
-
-def numpy_flip(im):
-    """ Most efficient Numpy version as of now. """
-    frame = numpy.array(im, dtype=numpy.uint8)
-    return numpy.flip(frame[:, :, :3], 2)
-
-
-def numpy_slice(im):
-    """ Slow Numpy version. """
-    return numpy.array(im, dtype=numpy.uint8)[..., [2, 1, 0]].tobytes()
-
-
-def pil_frombytes(im):
-    """ Efficient Pillow version. """
-    return Image.frombytes('RGB', im.size, im.bgra, 'raw', 'BGRX')
-
-def screenshot_process(img):
-    img = np.array(img)
-    img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-    return img
-
-
-
-
 if __name__=='__main__':
 
     if os.name == 'nt':
@@ -93,8 +64,8 @@ if __name__=='__main__':
             img1=cv2.cvtColor(img1, cv2.COLOR_BGRA2GRAY)
 
 
-# https://docs.opencv.org/3.4/d4/dee/tutorial_optical_flow.html
-# https://youtu.be/hfXMw2dQO4E
+            # https://docs.opencv.org/3.4/d4/dee/tutorial_optical_flow.html
+            # https://youtu.be/hfXMw2dQO4E
 
             # cv2.calcOpticalFlowPyrLK(img2, img1, )
 
