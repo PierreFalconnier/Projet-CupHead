@@ -224,9 +224,6 @@ class CupHeadEnvironment(object):
             bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
             img =  np.flip(bgra_array[:, :, :3], 2)
 
-            bgra_array = np.array(sct.grab(self.mon_optical)  , dtype=np.uint8)
-            prev =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-
             # Game Over
 
             if self.is_GameOver(img) : 
@@ -255,9 +252,13 @@ class CupHeadEnvironment(object):
                 reward += self.reward_dict['Health_point_lost']
                 current_hp += -1
 
-            # Action de l'agent
+            # Action de l'agent et screenshot avant-après
 
+            bgra_array = np.array(sct.grab(self.mon_optical)  , dtype=np.uint8)
+            prev =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
             self.act_in_environment(action_idx)
+            bgra_array = np.array(sct.grab(self.mon_optical)  , dtype=np.uint8)
+            next =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
                         
             # Génération de l'état suivant
 
@@ -267,15 +268,12 @@ class CupHeadEnvironment(object):
                 img_state =  np.flip(bgra_array[:, :, :3], 2)  # copy pour régler le pb des srides négatifs par géré par torch
                 next_state[k] = self.transform(img_state.copy()) 
             
-            # # Optical flow
-
-            bgra_array = np.array(sct.grab(self.mon_optical)  , dtype=np.uint8)
-            next =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+            # Optical flow     
 
             flow = cv2.calcOpticalFlowFarneback(prev, next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
             mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
             print(mag.mean())
-            if (np.pi-np.pi/6 < ang.mean() < np.pi+np.pi/6) and mag.mean() > 5 :
+            if (5*np.pi/6 < ang.mean() < 7*np.pi/6) and mag.mean() > 5 :
                 print("")
                 print("Cuphead Avance !")
                 reward += self.reward_dict['Forward']                      # récompense pour avancer

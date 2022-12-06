@@ -20,9 +20,8 @@ while(1):
     
 
     mag, ang = cv.cartToPolar(flow[..., 0], flow[..., 1])
-    print(ang.min(),ang.max()) ; exit()
+    print(mag.mean()) 
 
-    print(ang[100,100]) ; exit()
 
     hsv[..., 0] = ang*180/np.pi/2
     hsv[..., 2] = cv.normalize(mag, None, 0, 255, cv.NORM_MINMAX)

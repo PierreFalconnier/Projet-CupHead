@@ -78,7 +78,8 @@ def main(use_cam = True):
         from mss.windows import MSS as mss
     else:
         from mss.linux import MSS as mss
-    mon = {'top': 7*1080//8, 'left': 1920//4, 'width': 2*1920//4, 'height': 1080//8} 
+    mon = {'top': 100, 'left': 0, 'width': 3*1920//4, 'height': 3*1080//4} 
+    # mon = {'top': 7*1080//8, 'left': 1920//4, 'width': 2*1920//4, 'height': 1080//8} 
 
     import sys
     import cv2

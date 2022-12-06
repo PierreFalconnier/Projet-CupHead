@@ -32,6 +32,20 @@ if __name__=='__main__':
         # window.restore()
     else:
         from mss.linux import MSS as mss
+        import Xlib
+
+    
+
+    # from win32gui import FindWindow, GetWindowRect
+
+    # # FindWindow takes the Window Class name (can be None if unknown), and the window's display text. 
+    # window_handle = FindWindow(None, "Diablo II")
+    # window_rect   = GetWindowRect(window_handle)
+
+    # print(window_rect)
+
+
+    exit()
 
     step = 20000
     proba = 0.5
