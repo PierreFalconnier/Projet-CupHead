@@ -80,7 +80,8 @@ class CupHeadEnvironment(object):
         # Crop variables and screen shot
     
         self.mon = {'top': 0, 'left': 0, 'width': screen_shot_width, 'height': screen_shot_height} 
-
+        self.mon_optical = {'top': 7*1080//8, 'left': 1920//4, 'width': 2*1920//4, 'height': 1080//8}   # à mettre comme arg du constructeur
+        
         with mss() as sct:
             bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
             img =  np.flip(bgra_array[:, :, :3], 2)
@@ -223,6 +224,9 @@ class CupHeadEnvironment(object):
             bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
             img =  np.flip(bgra_array[:, :, :3], 2)
 
+            bgra_array = np.array(sct.grab(self.mon_optical)  , dtype=np.uint8)
+            prev =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+
             # Game Over
 
             if self.is_GameOver(img) : 
@@ -254,9 +258,7 @@ class CupHeadEnvironment(object):
             # Action de l'agent
 
             self.act_in_environment(action_idx)
-            if action_idx in [0,4] :
-                reward += self.reward_dict['Forward']                      # récompense pour avancer
-            
+                        
             # Génération de l'état suivant
 
             next_state = torch.zeros(self.dim_state,self.resize_h,self.resize_w)
@@ -265,14 +267,18 @@ class CupHeadEnvironment(object):
                 img_state =  np.flip(bgra_array[:, :, :3], 2)  # copy pour régler le pb des srides négatifs par géré par torch
                 next_state[k] = self.transform(img_state.copy()) 
             
-            # Optical flow
+            # # Optical flow
 
-            # flow = cv2.calcOpticalFlowFarneback(img, img_state, None, 0.5, 3, 15, 3, 5, 1.2, 0)
-            # mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
-            # ang = ang - np.pi
+            bgra_array = np.array(sct.grab(self.mon_optical)  , dtype=np.uint8)
+            next =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
 
-            # if (-np.pi/6 < ang.mean() < np.pi/6) and flow.mean() > 10 :
-            #     print("Cuphead Avance !")
+            flow = cv2.calcOpticalFlowFarneback(prev, next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+            mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+            print(mag.mean())
+            if (np.pi-np.pi/6 < ang.mean() < np.pi+np.pi/6) and mag.mean() > 5 :
+                print("")
+                print("Cuphead Avance !")
+                reward += self.reward_dict['Forward']                      # récompense pour avancer
 
             # Limite de temps pour un épisode atteinte
 
