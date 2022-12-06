@@ -16,9 +16,11 @@ while(1):
     next = cv.cvtColor(frame2, cv.COLOR_BGR2GRAY)
     flow = cv.calcOpticalFlowFarneback(prvs, next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
 
+
     
 
     mag, ang = cv.cartToPolar(flow[..., 0], flow[..., 1])
+    print(ang.min(),ang.max()) ; exit()
 
     print(ang[100,100]) ; exit()
 

@@ -110,8 +110,17 @@ def main(use_cam = True):
                 img =  np.flip(bgra_array[:, :, :3], 2)
                 gray=cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
 
+
             flow = cv.calcOpticalFlowFarneback(prevgray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
             prevgray = gray
+
+            mag, ang = cv.cartToPolar(flow[..., 0], flow[..., 1])
+            print(np.pi-np.pi/6, ang.mean(), np.pi+np.pi/6)
+            print((np.pi-np.pi/6 < float(ang.mean())) and (float(ang.mean()) < np.pi-np.pi/6))
+           
+            if (np.pi-np.pi/6 < ang.mean() < np.pi-np.pi/6) and mag.mean() > 6 :
+                print("Cuphead Avance !")
+
 
           
             cv.imshow('flow', ResizeWithAspectRatio(draw_flow(gray, flow), width=800))
@@ -138,5 +147,5 @@ def main(use_cam = True):
 
 if __name__ == '__main__':
     print(__doc__)
-    main(use_cam=True)
+    main(use_cam=False)
     cv.destroyAllWindows()

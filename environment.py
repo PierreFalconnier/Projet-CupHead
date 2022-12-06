@@ -262,9 +262,17 @@ class CupHeadEnvironment(object):
             next_state = torch.zeros(self.dim_state,self.resize_h,self.resize_w)
             for k in range(self.dim_state):
                 bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
-                img =  np.flip(bgra_array[:, :, :3], 2).copy()  # copy pour régler le pb des srides négatifs par géré par torch
-                next_state[k] = self.transform(img.copy()) 
+                img_state =  np.flip(bgra_array[:, :, :3], 2)  # copy pour régler le pb des srides négatifs par géré par torch
+                next_state[k] = self.transform(img_state.copy()) 
             
+            # Optical flow
+
+            # flow = cv2.calcOpticalFlowFarneback(img, img_state, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+            # mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+            # ang = ang - np.pi
+
+            # if (-np.pi/6 < ang.mean() < np.pi/6) and flow.mean() > 10 :
+            #     print("Cuphead Avance !")
 
             # Limite de temps pour un épisode atteinte
 
