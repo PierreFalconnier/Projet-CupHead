@@ -18,6 +18,7 @@ from __future__ import print_function
 
 import numpy as np
 import cv2 as cv
+import time
 
 
 def ResizeWithAspectRatio(image, width=None, height=None, inter=cv.INTER_AREA):
@@ -77,7 +78,7 @@ def main(use_cam = True):
         from mss.windows import MSS as mss
     else:
         from mss.linux import MSS as mss
-    mon = {'top': 0, 'left': 0, 'width': 1920//2, 'height': 1080//2} 
+    mon = {'top': 7*1080//8, 'left': 1920//4, 'width': 2*1920//4, 'height': 1080//8} 
 
     import sys
     import cv2
@@ -100,7 +101,7 @@ def main(use_cam = True):
         show_glitch = False
         cur_glitch = prev.copy()
 
-
+        t1 = time.time()
         while True:
             if use_cam:
                 _ret, img = cam.read()
@@ -115,10 +116,12 @@ def main(use_cam = True):
             prevgray = gray
 
             mag, ang = cv.cartToPolar(flow[..., 0], flow[..., 1])
-            print(np.pi-np.pi/6, ang.mean(), np.pi+np.pi/6)
-            print((np.pi-np.pi/6 < float(ang.mean())) and (float(ang.mean()) < np.pi-np.pi/6))
+            # print(np.pi-np.pi/6, ang.mean(), np.pi+np.pi/6)
+            # print(np.pi-np.pi/6 < float(ang.mean()) and (float(ang.mean()) < np.pi+np.pi/6))
+            print(mag.mean())
            
-            if (np.pi-np.pi/6 < ang.mean() < np.pi-np.pi/6) and mag.mean() > 6 :
+            if (np.pi-np.pi/6 < ang.mean() < np.pi+np.pi/6) and mag.mean() > 5 :
+                pass
                 print("Cuphead Avance !")
 
 
@@ -141,6 +144,8 @@ def main(use_cam = True):
                 if show_glitch:
                     cur_glitch = img.copy()
                 print('glitch is', ['off', 'on'][show_glitch])
+            # print("FPS : ", int(1/(time.time()-t1)))
+            t1 = time.time()
 
         print('Done')
 
