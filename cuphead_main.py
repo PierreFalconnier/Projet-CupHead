@@ -22,6 +22,7 @@ pg.PAUSE = 0
 
 ACTION_LIST  = [["right"],["left"],["left"],["z"],["z","right"]]   # s correspond à 'still', cuphead ne fait rien
 HOLD_TIMINGS = [0.75,   0.75,        0.1,    0.75,      0.65   ]
+FORWARD_ACTION_INDEX_LIST = [0,4]
 SCREEN_SHOT_WIDTH = 1920
 SCREEN_SHOT_HEIGHT = 1080
 RESIZE_H = 128
@@ -48,6 +49,7 @@ env = CupHeadEnvironment(
     reward_dict=REWARD_DICT,
     actions_list=ACTION_LIST,
     hold_timings=HOLD_TIMINGS,
+    forward_action_index_list=FORWARD_ACTION_INDEX_LIST,
     )
 
 # Agent
@@ -78,6 +80,7 @@ cuphead = CupHead(
 dict_config = {
     'ACTION_LIST' : ACTION_LIST,   
     'HOLD_TIMINGS'  : HOLD_TIMINGS,
+    'FORWARD_ACTION_INDEX_LIST' : FORWARD_ACTION_INDEX_LIST,
     'SCREEN_SHOT_WIDTH': SCREEN_SHOT_WIDTH,
     'SCREEN_SHOT_HEIGHT' : SCREEN_SHOT_HEIGHT,
     'RESIZE_H' : RESIZE_H,

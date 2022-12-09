@@ -63,6 +63,7 @@ class CupHeadEnvironment(object):
         reward_dict={},
         actions_list = [],
         hold_timings = [],
+        forward_action_index_list = [],
         ) -> None:
 
         # Actions
@@ -73,6 +74,7 @@ class CupHeadEnvironment(object):
        
         self.actions_list = actions_list  
         self.hold_timings = hold_timings
+        self.forward_action_index_list = forward_action_index_list
        
         self.actions_dim = len(self.actions_list)
         self.controls_enabled = controls_enabled   # si True, le programme utilie PyAutoGUI et controle le clavier
@@ -270,13 +272,23 @@ class CupHeadEnvironment(object):
             
             # Optical flow     
 
-            flow = cv2.calcOpticalFlowFarneback(prev, next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
-            mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
-            print(mag.mean())
-            if (5*np.pi/6 < ang.mean() < 7*np.pi/6) and mag.mean() > 5 :
+            # flow = cv2.calcOpticalFlowFarneback(prev, next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+            # mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+            # print(mag.mean())
+            # if (5*np.pi/6 < ang.mean() < 7*np.pi/6) and mag.mean() > 5 :
+            #     print("")
+            #     print("Cuphead Avance !")
+            #     reward += self.reward_dict['Forward']                      # récompense pour avancer
+
+            # Correlation
+
+            res = cv2.matchTemplate(prev,next, eval('cv2.TM_CCOEFF_NORMED')) 
+            if (res < 0.8).any() and action_idx in self.forward_action_index_list:
                 print("")
                 print("Cuphead Avance !")
                 reward += self.reward_dict['Forward']                      # récompense pour avancer
+   
+      
 
             # Limite de temps pour un épisode atteinte
 

@@ -45,7 +45,7 @@ if __name__=='__main__':
     # print(window_rect)
 
 
-    exit()
+  
 
     step = 20000
     proba = 0.5
@@ -104,44 +104,32 @@ if __name__=='__main__':
             frame = img2
 
 
-             # calculate optical flow
-            p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame, p0, None, **lk_params)
-            # Select good points
-            if p1 is not None:
-                good_new = p1[st==1]
-                good_old = p0[st==1]
-            # draw the tracks
-            for i, (new, old) in enumerate(zip(good_new, good_old)):
-                a, b = new.ravel()
-                c, d = old.ravel()
-                mask = cv2.line(mask, (int(a), int(b)), (int(c), int(d)), color[i].tolist(), 2)
-                frame = cv2.circle(frame, (int(a), int(b)), 5, color[i].tolist(), -1)
-            img = cv2.add(frame, mask)
-            cv2.imshow('frame', img)
+            #  # calculate optical flow
+            # p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame, p0, None, **lk_params)
+            # # Select good points
+            # if p1 is not None:
+            #     good_new = p1[st==1]
+            #     good_old = p0[st==1]
+            # # draw the tracks
+            # for i, (new, old) in enumerate(zip(good_new, good_old)):
+            #     a, b = new.ravel()
+            #     c, d = old.ravel()
+            #     mask = cv2.line(mask, (int(a), int(b)), (int(c), int(d)), color[i].tolist(), 2)
+            #     frame = cv2.circle(frame, (int(a), int(b)), 5, color[i].tolist(), -1)
+            # img = cv2.add(frame, mask)
+            # cv2.imshow('frame', img)
 
 
-            p0 = good_new.reshape(-1, 1, 2)
-
-
-
+            # p0 = good_new.reshape(-1, 1, 2)
 
 
 
-
-
-
-
-
-
-
-
-
-
-            # res = cv2.matchTemplate(frame,old_gray, eval('cv2.TM_CCOEFF_NORMED')) 
-            # (res >= 0.8).any()
+            # calculate correlation
+            res = cv2.matchTemplate(frame,old_gray, eval('cv2.TM_CCOEFF_NORMED')) 
+            # (res <0.8).any()
    
-            # cv2.imshow("Image", img2)
-            # print(res)
+            cv2.imshow("Image", img2)
+            print(res)
 
             # # https://docs.opencv.org/3.4/d4/dee/tutorial_optical_flow.html
             # # https://youtu.be/hfXMw2dQO4E
