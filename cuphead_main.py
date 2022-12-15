@@ -28,7 +28,7 @@ SCREEN_SHOT_HEIGHT = 1080
 RESIZE_H = 128
 RESIZE_W = 128
 DIM_STATE = 3
-CONTROLS_ENABLED = False             # Mettre False pour des tests sans utiliser le jeu
+CONTROLS_ENABLED = True             # Mettre False pour des tests sans utiliser le jeu
 EPISODE_TIME_LIMITE = 180
 
 REWARD_DICT = {

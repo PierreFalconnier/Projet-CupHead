@@ -39,6 +39,27 @@ def print_img(img):
     plt.imshow(img)
     plt.show()
 
+# Classe pour utiliser le clavier sur un nouveau thread
+
+import threading
+
+class InteractWithKeyboard(threading.Thread):
+
+    def __init__(self,actions_list = [], hold_timings = [],controls_enabled=True):
+        super().__init__()
+        self.actions_list = actions_list  
+        self.hold_timings = hold_timings
+        self.controls_enabled = controls_enabled
+
+    def act_in_environment(self, action_idx):
+        keys = self.actions_list[action_idx]
+        timing = self.hold_timings[action_idx]
+        if self.controls_enabled == True:
+            for key in keys:
+                pg.keyDown(key)
+            time.sleep(timing)
+            for key in keys:
+                pg.keyUp(key)
 
 # Actions
 # actions_binds_list = ["x"    ,"z"   ,"v"      ,"shiftleft","c"   ,"right","left","up","down","tab"          ]
@@ -78,6 +99,8 @@ class CupHeadEnvironment(object):
        
         self.actions_dim = len(self.actions_list)
         self.controls_enabled = controls_enabled   # si True, le programme utilie PyAutoGUI et controle le clavier
+
+        self.interact = InteractWithKeyboard(actions_list=actions_list, hold_timings=hold_timings,controls_enabled=controls_enabled)
 
         # Crop variables and screen shot
     
@@ -152,11 +175,6 @@ class CupHeadEnvironment(object):
             return frame[:, :, :3]  
     
     def reset_episode(self):
-        # pg.press('esc')  # vérifier si pas plutôt 'escape'
-        # time.sleep(0.5)
-        # pg.press('down') # temps du sleep est ok ?
-        # time.sleep(0.5)
-        # pg.press('enter') # temps du sleep est ok ?
         time.sleep(2)
         img_tensor = torch.zeros((self.dim_state,self.resize_h, self.resize_w))
         return img_tensor
@@ -170,27 +188,8 @@ class CupHeadEnvironment(object):
             pg.keyUp(key)
 
     def is_GameOver(self,img):
-        # self.img_shift = cv2.cvtColor(img1, cv2.COLOR_BGRA2GRAY)
-        # plt.figure()
-        # plt.imshow(self.img_shift)
-        # plt.show()
-        # print(type(self.img_shift),self.img_shift.shape)
-        # exit()
-
-        # print('SLEEPING')
-        # time.sleep(3)
-        # im = img[self.h_min_shift:self.h_max_shift,self.w_min_shift:self.w_max_shift]
-        # cv2.imwrite('shift.png', im) ; exit()
         res = cv2.matchTemplate(img[self.h_min_shift:self.h_max_shift,self.w_min_shift:self.w_max_shift] \
                                 , self.img_shift, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-        # i1 = img[self.h_min_shift:self.h_max_shift,self.w_min_shift:self.w_max_shift]
-        # i2 = self.img_shift
-        # print(i1.shape, type(i1))
-        # print(i2.shape, type(i2))
-        print((res))
-        
-        # exit()
-
         return (res >= self.correlation_threshold).any()       
     
     def compute_progression(self,img):
@@ -225,20 +224,19 @@ class CupHeadEnvironment(object):
             return (res2 >= self.correlation_threshold).any() or (res1 >=self.correlation_threshold).any()
         return False
     
-    def act_in_environment(self, action_idx, seconds=0.1):
-        keys = self.actions_list[action_idx]
-        timing = self.hold_timings[action_idx]
-        if self.controls_enabled == True:
-            for key in keys:
-                pg.keyDown(key)
-            time.sleep(timing)
-            for key in keys:
-                pg.keyUp(key)
+    # def act_in_environment_2(self, action_idx):
+    #     keys = self.actions_list[action_idx]
+    #     timing = self.hold_timings[action_idx]
+    #     if self.controls_enabled == True:
+    #         for key in keys:
+    #             pg.keyDown(key)
+    #         time.sleep(timing)
+    #         for key in keys:
+    #             pg.keyUp(key)
 
     def step(self,action_idx, current_hp, temps):    # correspond à un épisode, renvoie : next_state, reward, done, trunc, info
         done = False
         reward = 0
-
 
         with mss() as sct:
 
@@ -272,6 +270,7 @@ class CupHeadEnvironment(object):
             # Perte d'HP
             
             if self.is_health_point_lost(current_hp=current_hp, img=img):
+                print('HP lost !')
                 reward += self.reward_dict['Health_point_lost']
                 current_hp += -1
 
@@ -279,7 +278,7 @@ class CupHeadEnvironment(object):
 
             bgra_array = np.array(sct.grab(self.mon_optical)  , dtype=np.uint8)
             prev =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-            self.act_in_environment(action_idx)
+            self.interact.act_in_environment(action_idx)
             bgra_array = np.array(sct.grab(self.mon_optical)  , dtype=np.uint8)
             next =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
                         
@@ -304,6 +303,7 @@ class CupHeadEnvironment(object):
             # Correlation
 
             res = cv2.matchTemplate(prev,next, eval('cv2.TM_CCOEFF_NORMED')) 
+            print(res)
             if (res < 0.8).any() and action_idx in self.forward_action_index_list:
                 print("")
                 print("Cuphead Avance !")
@@ -322,9 +322,10 @@ class CupHeadEnvironment(object):
 
 if __name__ == '__main__':
 
-    env = CupHeadEnvironment()
+    ACTION_LIST  = [["right"],["left"],["left"],["z"],["z","right"]]   # s correspond à 'still', cuphead ne fait rien
+    HOLD_TIMINGS = [0.75,   0.75,        0.1,    0.75,      0.65   ]
+    env = CupHeadEnvironment(actions_list=ACTION_LIST,hold_timings=HOLD_TIMINGS)
 
-    img_array = env.take_screenshot()
 
 
     

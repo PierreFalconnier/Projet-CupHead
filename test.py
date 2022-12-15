@@ -18,6 +18,7 @@ import math
 import os
 import numpy
 from PIL import Image
+import pprint
 
 
 if __name__=='__main__':
@@ -32,7 +33,6 @@ if __name__=='__main__':
         # window.restore()
     else:
         from mss.linux import MSS as mss
-        import Xlib
 
     
 
