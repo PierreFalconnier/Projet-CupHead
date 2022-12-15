@@ -69,8 +69,14 @@ if __name__=='__main__':
 
     with mss() as sct:
         bgra_array = np.array(sct.grab(mon)  , dtype=np.uint8)
-        img1 =  np.flip(bgra_array[:, :, :3], 2)
-        img1=cv2.cvtColor(img1, cv2.COLOR_BGRA2GRAY)
+        img1 =  bgra_array[:, :, :3]
+        # img1=cv2.cvtColor(img1, cv2.COLOR_BGRA2GRAY)
+
+        plt.figure()
+        plt.imshow(img1)
+        plt.show()
+        print(type(img1),img1.shape)
+        exit()
 
         t1 = time.time()
         cv2.namedWindow("Image",cv2.WINDOW_NORMAL)
@@ -99,7 +105,7 @@ if __name__=='__main__':
 
         while True :
             bgra_array = np.array(sct.grab(mon)  , dtype=np.uint8)
-            img2 =  np.flip(bgra_array[:, :, :3], 2)
+            img2 = bgra_array[:, :, :3]
             img2=cv2.cvtColor(img2, cv2.COLOR_BGRA2GRAY)
             frame = img2
 

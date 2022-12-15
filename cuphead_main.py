@@ -28,7 +28,7 @@ SCREEN_SHOT_HEIGHT = 1080
 RESIZE_H = 128
 RESIZE_W = 128
 DIM_STATE = 3
-CONTROLS_ENABLED = True  # Mettre False pour des tests sans utiliser le jeu
+CONTROLS_ENABLED = False             # Mettre False pour des tests sans utiliser le jeu
 EPISODE_TIME_LIMITE = 180
 
 REWARD_DICT = {
@@ -124,6 +124,7 @@ if CONTROLS_ENABLED:
         time.sleep(5)
 
 print("Training time !")
+if not CONTROLS_ENABLED : print("CONTROLS DISABLED")
 
 for e in range(episodes):
 
@@ -163,10 +164,10 @@ for e in range(episodes):
         # plt.show()
         # exit()
 
-        # # Vérifications en dirxect
-        # print("------------")
-        # print("Step ",cuphead.curr_step,"q ",q,"Loss ",loss)
-        # print("Action ",env.actions_list[action_idx],"Reward ", reward,"Current HP ", current_hp)
+        # Vérifications en dirxect
+        print("------------")
+        print("Step ",cuphead.curr_step,"q ",q,"Loss ",loss)
+        print("Action ",env.actions_list[action_idx],"Reward ", reward,"Current HP ", current_hp)
 
         # Check if end of game
         if done:

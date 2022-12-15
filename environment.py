@@ -47,7 +47,7 @@ def print_img(img):
 # flying_actions_names_list = ["shoot","special","parry","shrink"]
 # action_dim = len(actions_binds_list)
 
-# Environment class
+# Environment class, ATTENTION : on manipule des images BGR, pas RGB, c'est important pour les corrélations
 
 class CupHeadEnvironment(object):
 
@@ -83,10 +83,12 @@ class CupHeadEnvironment(object):
     
         self.mon = {'top': 0, 'left': 0, 'width': screen_shot_width, 'height': screen_shot_height} 
         self.mon_optical = {'top': 7*1080//8, 'left': 1920//4, 'width': 2*1920//4, 'height': 1080//8}   # à mettre comme arg du constructeur
+
+        self.correlation_threshold = 0.8
         
         with mss() as sct:
             bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
-            img =  np.flip(bgra_array[:, :, :3], 2)
+            img =  bgra_array[:, :, :3]
 
         # Crop variables
         self.w_min_bar = int(img.shape[1]*812/2560)
@@ -147,7 +149,7 @@ class CupHeadEnvironment(object):
     def take_screenshot(self):
         with mss() as sct:
             frame = np.array(sct.grab(self.mon)  , dtype=np.uint8)
-            return np.flip(frame[:, :, :3], 2)     
+            return frame[:, :, :3]  
     
     def reset_episode(self):
         # pg.press('esc')  # vérifier si pas plutôt 'escape'
@@ -168,9 +170,28 @@ class CupHeadEnvironment(object):
             pg.keyUp(key)
 
     def is_GameOver(self,img):
+        # self.img_shift = cv2.cvtColor(img1, cv2.COLOR_BGRA2GRAY)
+        # plt.figure()
+        # plt.imshow(self.img_shift)
+        # plt.show()
+        # print(type(self.img_shift),self.img_shift.shape)
+        # exit()
+
+        # print('SLEEPING')
+        # time.sleep(3)
+        # im = img[self.h_min_shift:self.h_max_shift,self.w_min_shift:self.w_max_shift]
+        # cv2.imwrite('shift.png', im) ; exit()
         res = cv2.matchTemplate(img[self.h_min_shift:self.h_max_shift,self.w_min_shift:self.w_max_shift] \
                                 , self.img_shift, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-        return (res >= 0.8).any()
+        # i1 = img[self.h_min_shift:self.h_max_shift,self.w_min_shift:self.w_max_shift]
+        # i2 = self.img_shift
+        # print(i1.shape, type(i1))
+        # print(i2.shape, type(i2))
+        print((res))
+        
+        # exit()
+
+        return (res >= self.correlation_threshold).any()       
     
     def compute_progression(self,img):
         img_progress_bar = img[self.h_min_bar:self.h_max_bar,self.w_min_bar:self.w_max_bar]
@@ -188,20 +209,20 @@ class CupHeadEnvironment(object):
     def is_GameWin(self,img):
         res = cv2.matchTemplate(img[self.h_min_win:self.h_max_win,self.w_min_win:self.w_max_win] \
                                 , self.img_win, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-        return (res >= 0.8).any()
+        return (res >= self.correlation_threshold).any()
     
     def is_health_point_lost(self,current_hp,img):
         if current_hp == 3:
             res = cv2.matchTemplate(img[self.h_min_hp:self.h_max_hp,self.w_min_hp:self.w_max_hp] \
                                 , self.img_2hp, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-            return (res >= 0.8).any()
+            return (res >= self.correlation_threshold).any()
             
         if current_hp == 2:
             res1 = cv2.matchTemplate(img[self.h_min_hp:self.h_max_hp,self.w_min_hp:self.w_max_hp] \
                                 , self.img_1hp_1, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
             res2 = cv2.matchTemplate(img[self.h_min_hp:self.h_max_hp,self.w_min_hp:self.w_max_hp] \
                                 , self.img_1hp_2, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-            return (res2 >= 0.8).any() or (res1 >= 0.8).any()
+            return (res2 >= self.correlation_threshold).any() or (res1 >=self.correlation_threshold).any()
         return False
     
     def act_in_environment(self, action_idx, seconds=0.1):
@@ -224,7 +245,7 @@ class CupHeadEnvironment(object):
             # Mise a jour de l'image via capture d'écran 
 
             bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
-            img =  np.flip(bgra_array[:, :, :3], 2)
+            img =  bgra_array[:, :, :3]     # convertion BGR
 
             # Game Over
 
@@ -233,7 +254,7 @@ class CupHeadEnvironment(object):
                 print("You Died !")
                 time.sleep(3)
                 bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
-                img =  np.flip(bgra_array[:, :, :3], 2)
+                img =  bgra_array[:, :, :3]
                 progression = self.compute_progression(img)             
                 # reward += int(40*progression)                           # reward en fonction dela progression
                 reward +=  self.reward_dict['GameOver']
@@ -267,7 +288,7 @@ class CupHeadEnvironment(object):
             next_state = torch.zeros(self.dim_state,self.resize_h,self.resize_w)
             for k in range(self.dim_state):
                 bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
-                img_state =  np.flip(bgra_array[:, :, :3], 2)  # copy pour régler le pb des srides négatifs par géré par torch
+                img_state =  bgra_array[:, :, :3]  # copy pour régler le pb des srides négatifs par géré par torch
                 next_state[k] = self.transform(img_state.copy()) 
             
             # Optical flow     
@@ -296,7 +317,6 @@ class CupHeadEnvironment(object):
                 done = True
                 reward += -10 
                 print("Time limite reached, reseting...")
-
             return next_state, reward, done, current_hp
     
 
