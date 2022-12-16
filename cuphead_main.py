@@ -11,10 +11,11 @@ from metric_logger import MetricLogger
 from environment import CupHeadEnvironment
 import os, sys
 
-
-save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-save_dir.mkdir(parents=True)
-logger = MetricLogger(save_dir)
+LOGGING = True
+if LOGGING:
+    save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    save_dir.mkdir(parents=True)
+    logger = MetricLogger(save_dir)
 
 # Environment
 
@@ -23,8 +24,7 @@ pg.PAUSE = 0
 ACTION_LIST  = [["right"],["left"],["left"],["z"],["z","right"]]   # s correspond à 'still', cuphead ne fait rien
 HOLD_TIMINGS = [0.75,   0.75,        0.1,    0.75,      0.65   ]
 FORWARD_ACTION_INDEX_LIST = [0,4]
-SCREEN_SHOT_WIDTH = 1920
-SCREEN_SHOT_HEIGHT = 1080
+SCREEN_WIDTH, SCREEN_HEIGHT = pg.size() 
 RESIZE_H = 128
 RESIZE_W = 128
 DIM_STATE = 3
@@ -39,8 +39,8 @@ REWARD_DICT = {
     }
 
 env = CupHeadEnvironment(
-    screen_shot_width=SCREEN_SHOT_WIDTH,
-    screen_shot_height=SCREEN_SHOT_HEIGHT,
+    screen_width=SCREEN_WIDTH,
+    screen_height=SCREEN_HEIGHT,
     resize_h=RESIZE_H,
     resize_w=RESIZE_W,
     dim_state=DIM_STATE,
@@ -81,8 +81,8 @@ dict_config = {
     'ACTION_LIST' : ACTION_LIST,   
     'HOLD_TIMINGS'  : HOLD_TIMINGS,
     'FORWARD_ACTION_INDEX_LIST' : FORWARD_ACTION_INDEX_LIST,
-    'SCREEN_SHOT_WIDTH': SCREEN_SHOT_WIDTH,
-    'SCREEN_SHOT_HEIGHT' : SCREEN_SHOT_HEIGHT,
+    'SCREEN_WIDTH': SCREEN_WIDTH,
+    'SCREEN_HEIGHT' : SCREEN_HEIGHT,
     'RESIZE_H' : RESIZE_H,
     'RESIZE_W' : RESIZE_W,
     'DIM_STATE' : DIM_STATE,
@@ -154,7 +154,8 @@ for e in range(episodes):
         q, loss = cuphead.learn()
 
         # Logging
-        logger.log_step(reward, loss, q)
+        if LOGGING:
+            logger.log_step(reward, loss, q)
 
         # Update state
         state = next_state
@@ -177,9 +178,10 @@ for e in range(episodes):
 
         temps = time.time()-start_time
 
-    logger.log_episode()
+        
+    if LOGGING:logger.log_episode()
 
-    if e % 5 == 0:
+    if e % 5 == 0 and LOGGING:
         logger.record(episode=e, epsilon=cuphead.exploration_rate, step=cuphead.curr_step)
         if loss and previous_loss and loss<previous_loss :                                      # sauve que si amélioration
             torch.save(cuphead.net.state_dict(), os.path.join(save_dir,'model_cuphead_stat_dict.pt'))

@@ -1,23 +1,17 @@
 # Imports et fonctions
-
 import pyautogui as pg
-# from PIL import ImageGrab  # plus rapide pour les screenshots
-# import pyscreenshot as ImageGrab
 import time
-import keyboard  # utile pour taper certain caractères comme le "#" qui ne sont pas supportés par pyautogui
 import matplotlib.pyplot as plt
 import cv2
-import PIL
 import numpy as np
 import os
-from agent import CupHead
-
 from torchvision.transforms import ToTensor, Resize, Grayscale, Compose
 import torch
 
 if os.name == 'nt':
     from mss.windows import MSS as mss
 else:
+    from wmctrl import Window
     from mss.linux import MSS as mss
 
 
@@ -34,7 +28,7 @@ def hold2Keys(key1,key2,seconds=0.1):
     pg.keyUp(key1)
     pg.keyUp(key2)
 
-def print_img(img):
+def iprint(img):
     plt.figure()
     plt.imshow(img)
     plt.show()
@@ -74,8 +68,8 @@ class CupHeadEnvironment(object):
 
     def __init__(
         self,
-        screen_shot_width = 1920,
-        screen_shot_height = 1080,
+        screen_width = 1920,
+        screen_height = 1080,
         resize_w=128,
         resize_h=128,
         dim_state=2,
@@ -98,22 +92,62 @@ class CupHeadEnvironment(object):
         self.forward_action_index_list = forward_action_index_list
        
         self.actions_dim = len(self.actions_list)
-        self.controls_enabled = controls_enabled   # si True, le programme utilie PyAutoGUI et controle le clavier
+        self.controls_enabled = controls_enabled   # si True, le programme utilise PyAutoGUI et controle le clavier
 
         self.interact = InteractWithKeyboard(actions_list=actions_list, hold_timings=hold_timings,controls_enabled=controls_enabled)
 
-        # Crop variables and screen shot
+        # Check if game running
     
-        self.mon = {'top': 0, 'left': 0, 'width': screen_shot_width, 'height': screen_shot_height} 
-        self.mon_optical = {'top': 7*1080//8, 'left': 1920//4, 'width': 2*1920//4, 'height': 1080//8}   # à mettre comme arg du constructeur
+        is_cuphead_launched = False
+        for w in Window.list():
+            if w.wm_name == 'Cuphead':
+                is_cuphead_launched = True
+                w.activate()
+                break
+        
+        # if is_cuphead_launched==False:
+        #     print('Please launch Cuphead. Waiting 20 seconds...')
+        #     class FoundCupead(Exception): pass
+        #     dt, start = 0, time.time()
+        #     try:
+        #         while dt<20:
+        #             for w in Window.list():
+        #                 if w.wm_name == 'Cuphead':
+        #                     raise FoundCupead
+        #             dt = time.time()-start
+        #     except FoundCupead:
+        #         is_cuphead_launched = True
+        
+        if is_cuphead_launched == False : 
+            print('Game not running, exiting.') ; exit()
+     
+        w_active = Window.get_active()
+        if w_active.wm_name != 'Cuphead':
+            print('Cuphead window not on screen ! Activating cuphead window.')
+            w.activate()
+        
+        x,y,w,h = w.x-1,w.y-38,w.w,w.h   # prise en compte de l'offset de la bar de titre, jai utilsé xwininfo dans un terminal
+        # pg.moveTo(x,y)
+        # pg.moveTo(x+w,y+h)
 
+        # Get window position and size needed for screenshots
+        print('Cuphead window box(x,y,w,h) : ',x,y,w,h)
+        self.mon = {'top': max(0,y), 'left': max(0,x), 'width': min(screen_width-x,w), 'height': min(screen_height-y,h)} 
+        self.mon_for_correlation = {'top': max(0,y)+ 7*h//8, 'left': max(0,x)+ w//4, 'width': 2*w//4, 'height': h//8}   # /!\ A MODIFIER AVEC LA POSITION DE LA FENETRE à mettre comme arg du constructeur
+        
+        if any([y<0,x<0,x+w>screen_width, y+h>screen_height]):
+            print("Cuphead window outside of the sreen !")
+
+        # Set correlation_threshold
         self.correlation_threshold = 0.8
         
+        # Crop variables
+        # time.sleep(2)
         with mss() as sct:
             bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
             img =  bgra_array[:, :, :3]
+            # iprint(img)
 
-        # Crop variables
         self.w_min_bar = int(img.shape[1]*812/2560)
         self.w_max_bar = int(img.shape[1]*1758/2560)
         self.h_min_bar = int(img.shape[0]*691/1440)
@@ -134,12 +168,16 @@ class CupHeadEnvironment(object):
         self.w_min_hp = int(img.shape[0]*38/1080)
         self.w_max_hp = int(img.shape[0]*137/1080)
 
-        # Images for correlations
-        self.img_shift = cv2.imread('images/shift.png')
-        self.img_win = cv2.imread('images/the_from_win_screen.png')
-        self.img_1hp_1 = cv2.imread('images/1hp_1.png')
-        self.img_1hp_2 = cv2.imread('images/1hp_2.png')
-        self.img_2hp = cv2.imread('images/2hp.png')
+        # Images for correlations, resize (originale saved images on 1920x1080 tests)
+
+        def resize_saved_image(img,h,w):
+            return cv2.resize(img,(int(img.shape[1]* w/1920),int(img.shape[0]*h/1080)))
+        
+        self.img_shift = resize_saved_image(cv2.imread('images/shift.png'),h,w)
+        self.img_win = resize_saved_image(cv2.imread('images/the_from_win_screen.png'),h,w)
+        self.img_1hp_1 = resize_saved_image(cv2.imread('images/1hp_1.png'),h,w)
+        self.img_1hp_2 = resize_saved_image(cv2.imread('images/1hp_2.png'),h,w)
+        self.img_2hp = resize_saved_image(cv2.imread('images/2hp.png'),h,w)
 
         # Progression bar threshold
         self.lower_red = np.array([0, 197, 116])
@@ -276,10 +314,10 @@ class CupHeadEnvironment(object):
 
             # Action de l'agent et screenshot avant-après
 
-            bgra_array = np.array(sct.grab(self.mon_optical)  , dtype=np.uint8)
+            bgra_array = np.array(sct.grab(self.mon_for_correlation)  , dtype=np.uint8)
             prev =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
             self.interact.act_in_environment(action_idx)
-            bgra_array = np.array(sct.grab(self.mon_optical)  , dtype=np.uint8)
+            bgra_array = np.array(sct.grab(self.mon_for_correlation)  , dtype=np.uint8)
             next =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
                         
             # Génération de l'état suivant
@@ -309,8 +347,6 @@ class CupHeadEnvironment(object):
                 print("Cuphead Avance !")
                 reward += self.reward_dict['Forward']                      # récompense pour avancer
    
-      
-
             # Limite de temps pour un épisode atteinte
 
             if temps > self.episode_time_limite:
@@ -324,8 +360,5 @@ if __name__ == '__main__':
 
     ACTION_LIST  = [["right"],["left"],["left"],["z"],["z","right"]]   # s correspond à 'still', cuphead ne fait rien
     HOLD_TIMINGS = [0.75,   0.75,        0.1,    0.75,      0.65   ]
-    env = CupHeadEnvironment(actions_list=ACTION_LIST,hold_timings=HOLD_TIMINGS)
-
-
-
-    
+    SCREEN_WIDTH, SCREEN_HEIGHT = pg.size() 
+    env = CupHeadEnvironment(actions_list=ACTION_LIST,hold_timings=HOLD_TIMINGS, screen_height=SCREEN_HEIGHT, screen_width=SCREEN_WIDTH)
