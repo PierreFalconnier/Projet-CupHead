@@ -10,10 +10,13 @@ from agent import CupHead
 from metric_logger import MetricLogger
 from environment import CupHeadEnvironment
 import os, sys
+import pprint 
 
-LOGGING = True
+CONTROLS_ENABLED = False             # Mettre False pour des tests sans utiliser le jeu
+LOGGING = False
+
+save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
 if LOGGING:
-    save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     save_dir.mkdir(parents=True)
     logger = MetricLogger(save_dir)
 
@@ -28,7 +31,6 @@ SCREEN_WIDTH, SCREEN_HEIGHT = pg.size()
 RESIZE_H = 128
 RESIZE_W = 128
 DIM_STATE = 3
-CONTROLS_ENABLED = True             # Mettre False pour des tests sans utiliser le jeu
 EPISODE_TIME_LIMITE = 180
 
 REWARD_DICT = {
@@ -68,6 +70,7 @@ cuphead = CupHead(
     state_dim=(env.dim_state, env.resize_h, 
     env.resize_w), 
     action_dim=env.actions_dim, 
+    logging=LOGGING,
     save_dir=save_dir,
     exploration_rate_decay= EXPLORATION_RATE_DECAY,
     burnin=BURNIN,
@@ -99,7 +102,7 @@ dict_config = {
     'LEARNING_RATE' : LEARNING_RATE,
     'DEVICE' : DEVICE,
 }
-torch.save(dict_config, save_dir / 'dict_config.pt')
+if LOGGING : torch.save(dict_config, save_dir / 'dict_config.pt')
 
 # Load previous model
 
@@ -133,7 +136,6 @@ for e in range(episodes):
     start_time = time.time()
     prev_frame_time = time.time()
     temps = 0
-    current_hp = 3
     state = env.reset_episode()
     if CONTROLS_ENABLED :
         pg.keyDown('x')
@@ -145,7 +147,7 @@ for e in range(episodes):
         action_idx = cuphead.act(state)
 
         # Agent performs action
-        next_state, reward, done, current_hp = env.step(action_idx, current_hp=current_hp, temps=temps)
+        next_state, reward, done = env.step(action_idx, temps=temps)
 
         # Remember
         cuphead.cache(state, next_state, action_idx, reward, done)   # 80 bytes
@@ -160,29 +162,25 @@ for e in range(episodes):
         # Update state
         state = next_state
 
-        # plt.figure()
-        # plt.imshow(state[0].numpy())
-        # plt.show()
-        # exit()
-
-        # Vérifications en dirxect
-        print("------------")
-        print("Step ",cuphead.curr_step,"q ",q,"Loss ",loss)
-        print("Action ",env.actions_list[action_idx],"Reward ", reward,"Current HP ", current_hp)
+        # # # Vérifications en direct
+        # # os.system('clear')
+        # print("------------")
+        # dir  = {'Step':cuphead.curr_step,'q':q,'Loss':loss,'Action':env.actions_list[action_idx],'Reward':reward,}
+        # pprint.pprint(dir,width=1)
+        # # print(f'Step {cuphead.curr_step} - q {q} - Loss {loss}')
+        # # print(f'Action {env.actions_list[action_idx]} - Reward {reward}')
 
         # Check if end of game
         if done:
-            # print("Step ",cuphead.curr_step,"q ",q,"Loss ",loss)
-            # print("Action ",env.actions_list[action_idx],"Reward ", reward,"Current HP ", current_hp)
             break
 
         temps = time.time()-start_time
 
         
-    if LOGGING:logger.log_episode()
+    if LOGGING:logger.log_episode(env.last_progress)
 
-    if e % 5 == 0 and LOGGING:
-        logger.record(episode=e, epsilon=cuphead.exploration_rate, step=cuphead.curr_step)
+    if e % 1 == 0 and LOGGING:
+        logger.record(episode=e, epsilon=cuphead.exploration_rate, step=cuphead.curr_step, progress= env.last_progress)
         if loss and previous_loss and loss<previous_loss :                                      # sauve que si amélioration
             torch.save(cuphead.net.state_dict(), os.path.join(save_dir,'model_cuphead_stat_dict.pt'))
     

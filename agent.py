@@ -13,6 +13,7 @@ class CupHead(object):
         self,
         state_dim, 
         action_dim, 
+        logging = False,
         save_dir='trash',
         exploration_rate_decay=0.99999975,
         exploration_rate_min=0.1,
@@ -29,6 +30,7 @@ class CupHead(object):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.save_dir = save_dir
+        self.logging = logging
 
         if device == "cuda":
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -157,14 +159,15 @@ class CupHead(object):
         self.net.target.load_state_dict(self.net.online.state_dict())
 
     def save(self):
-        save_path = (
-            self.save_dir / f"cuphead_net_{int(self.curr_step // self.save_every)}.chkpt"
-        )
-        torch.save(
-            dict(model=self.net.state_dict(), exploration_rate=self.exploration_rate),
-            save_path,
-        )
-        print(f"CupHeadNet saved to {save_path} at step {self.curr_step}")
+        if self.logging:
+            save_path = (
+                self.save_dir / f"cuphead_net_{int(self.curr_step // self.save_every)}.chkpt"
+            )
+            torch.save(
+                dict(model=self.net.state_dict(), exploration_rate=self.exploration_rate),
+                save_path,
+            )
+            print(f"CupHeadNet saved to {save_path} at step {self.curr_step}")
     
     def learn(self):
         if self.curr_step % self.sync_every == 0:

@@ -39,11 +39,15 @@ import threading
 
 class InteractWithKeyboard(threading.Thread):
 
-    def __init__(self,actions_list = [], hold_timings = [],controls_enabled=True):
+    def __init__(self,actions_list = [], 
+    hold_timings = [],
+    controls_enabled=True,
+    mon_for_correlation=None,):
         super().__init__()
         self.actions_list = actions_list  
         self.hold_timings = hold_timings
         self.controls_enabled = controls_enabled
+        self.mon_for_correlation = mon_for_correlation
 
     def act_in_environment(self, action_idx):
         keys = self.actions_list[action_idx]
@@ -81,20 +85,6 @@ class CupHeadEnvironment(object):
         forward_action_index_list = [],
         ) -> None:
 
-        # Actions
-        # self.actions_list = [["right"],["left"],["up"],["down"],["s"],["z"],["shiftleft"],["z","right"],["z","left"]]   # s correspond à 'still', cuphead ne fait rien
-        # self.hold_timings = [0.75,   0.75,  0.3, 0.3,   0.75,  0.75,   0.1,      0.65,          0.65]
-        # self.actions_list = [["right"],["left"],["left"],["z"],["z","right"],["shiftleft"]]   # s correspond à 'still', cuphead ne fait rien
-        # self.hold_timings = [0.75,   0.75,        0.1,    0.75,      0.65,        0.1]
-       
-        self.actions_list = actions_list  
-        self.hold_timings = hold_timings
-        self.forward_action_index_list = forward_action_index_list
-       
-        self.actions_dim = len(self.actions_list)
-        self.controls_enabled = controls_enabled   # si True, le programme utilise PyAutoGUI et controle le clavier
-
-        self.interact = InteractWithKeyboard(actions_list=actions_list, hold_timings=hold_timings,controls_enabled=controls_enabled)
 
         # Check if game running
     
@@ -104,23 +94,8 @@ class CupHeadEnvironment(object):
                 is_cuphead_launched = True
                 w.activate()
                 break
-        
-        # if is_cuphead_launched==False:
-        #     print('Please launch Cuphead. Waiting 20 seconds...')
-        #     class FoundCupead(Exception): pass
-        #     dt, start = 0, time.time()
-        #     try:
-        #         while dt<20:
-        #             for w in Window.list():
-        #                 if w.wm_name == 'Cuphead':
-        #                     raise FoundCupead
-        #             dt = time.time()-start
-        #     except FoundCupead:
-        #         is_cuphead_launched = True
-        
         if is_cuphead_launched == False : 
             print('Game not running, exiting.') ; exit()
-     
         w_active = Window.get_active()
         if w_active.wm_name != 'Cuphead':
             print('Cuphead window not on screen ! Activating cuphead window.')
@@ -133,20 +108,45 @@ class CupHeadEnvironment(object):
         # Get window position and size needed for screenshots
         print('Cuphead window box(x,y,w,h) : ',x,y,w,h)
         self.mon = {'top': max(0,y), 'left': max(0,x), 'width': min(screen_width-x,w), 'height': min(screen_height-y,h)} 
-        self.mon_for_correlation = {'top': max(0,y)+ 7*h//8, 'left': max(0,x)+ w//4, 'width': 2*w//4, 'height': h//8}   # /!\ A MODIFIER AVEC LA POSITION DE LA FENETRE à mettre comme arg du constructeur
+        self.mon_for_correlation = {'top': max(0,y)+ 7*h//8, 'left': max(0,x)+ 3*w//8, 'width': 2*w//8, 'height': h//8}   # /!\ A MODIFIER AVEC LA POSITION DE LA FENETRE à mettre comme arg du constructeur
         
         if any([y<0,x<0,x+w>screen_width, y+h>screen_height]):
             print("Cuphead window outside of the sreen !")
+
+        # Actions
+        # self.actions_list = [["right"],["left"],["up"],["down"],["s"],["z"],["shiftleft"],["z","right"],["z","left"]]   # s correspond à 'still', cuphead ne fait rien
+        # self.hold_timings = [0.75,   0.75,  0.3, 0.3,   0.75,  0.75,   0.1,      0.65,          0.65]
+        # self.actions_list = [["right"],["left"],["left"],["z"],["z","right"],["shiftleft"]]   # s correspond à 'still', cuphead ne fait rien
+        # self.hold_timings = [0.75,   0.75,        0.1,    0.7
+        # 5,      0.65,        0.1]
+       
+        self.actions_list = actions_list  
+        self.hold_timings = hold_timings
+        self.forward_action_index_list = forward_action_index_list
+       
+        self.actions_dim = len(self.actions_list)
+        self.controls_enabled = controls_enabled   # si True, le programme utilise PyAutoGUI et controle le clavier
+
+        self.current_hp = 3 
+        self.last_progress = 0
+        self.done = False
+        self.reward = 0
+
+        # self.interact = InteractWithKeyboard(actions_list=actions_list, 
+        #                                     hold_timings=hold_timings,
+        #                                     controls_enabled=controls_enabled,
+        #                                     )
+        
 
         # Set correlation_threshold
         self.correlation_threshold = 0.8
         
         # Crop variables
-        # time.sleep(2)
+   
         with mss() as sct:
             bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
             img =  bgra_array[:, :, :3]
-            # iprint(img)
+  
 
         self.w_min_bar = int(img.shape[1]*812/2560)
         self.w_max_bar = int(img.shape[1]*1758/2560)
@@ -167,6 +167,11 @@ class CupHeadEnvironment(object):
         self.h_max_hp = int(img.shape[1]*1041/1920)
         self.w_min_hp = int(img.shape[0]*38/1080)
         self.w_max_hp = int(img.shape[0]*137/1080)
+
+        img_hp = img[self.h_min_hp:self.h_max_hp,self.w_min_hp:self.w_max_hp]
+        gray = cv2.cvtColor(img_hp, cv2.COLOR_BGR2GRAY)
+        _,self.new_hp = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
+        _,self.prev_hp = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
 
         # Images for correlations, resize (originale saved images on 1920x1080 tests)
 
@@ -195,6 +200,8 @@ class CupHeadEnvironment(object):
         # Variables des timing FPS et skip frame
         self.dim_state = dim_state
         self.episode_time_limite = episode_time_limite
+
+        self.sleep_between_state_frames = 1/24  # le jeu est à 24 fps
 
         # Reward dictionary
         self.reward_dict = reward_dict
@@ -227,10 +234,10 @@ class CupHeadEnvironment(object):
 
     def is_GameOver(self,img):
         res = cv2.matchTemplate(img[self.h_min_shift:self.h_max_shift,self.w_min_shift:self.w_max_shift] \
-                                , self.img_shift, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
+                                , self.img_shift, eval('cv2.TM_CCOEFF_NORMED'))
         return (res >= self.correlation_threshold).any()       
     
-    def compute_progression(self,img):
+    def compute_progress(self,img):
         img_progress_bar = img[self.h_min_bar:self.h_max_bar,self.w_min_bar:self.w_max_bar]
         hsv_progress_bar = cv2.cvtColor(img_progress_bar, cv2.COLOR_BGR2HSV)
         hsv_progress_bar = cv2.GaussianBlur(src=hsv_progress_bar,ksize=(3,3),sigmaX=1,sigmaY=1) 
@@ -240,86 +247,101 @@ class CupHeadEnvironment(object):
             cX = np.average(mass_x)
         except:
             ValueError('CupHead non-detecté dans la barre de progression')
-        progression = cX/mask.shape[1]
-        return progression
+        progress = cX/mask.shape[1]
+        return progress
 
     def is_GameWin(self,img):
         res = cv2.matchTemplate(img[self.h_min_win:self.h_max_win,self.w_min_win:self.w_max_win] \
                                 , self.img_win, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
         return (res >= self.correlation_threshold).any()
     
-    def is_health_point_lost(self,current_hp,img):
-        if current_hp == 3:
-            res = cv2.matchTemplate(img[self.h_min_hp:self.h_max_hp,self.w_min_hp:self.w_max_hp] \
-                                , self.img_2hp, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-            return (res >= self.correlation_threshold).any()
-            
-        if current_hp == 2:
-            res1 = cv2.matchTemplate(img[self.h_min_hp:self.h_max_hp,self.w_min_hp:self.w_max_hp] \
-                                , self.img_1hp_1, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-            res2 = cv2.matchTemplate(img[self.h_min_hp:self.h_max_hp,self.w_min_hp:self.w_max_hp] \
-                                , self.img_1hp_2, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-            return (res2 >= self.correlation_threshold).any() or (res1 >=self.correlation_threshold).any()
-        return False
-    
-    # def act_in_environment_2(self, action_idx):
-    #     keys = self.actions_list[action_idx]
-    #     timing = self.hold_timings[action_idx]
-    #     if self.controls_enabled == True:
-    #         for key in keys:
-    #             pg.keyDown(key)
-    #         time.sleep(timing)
-    #         for key in keys:
-    #             pg.keyUp(key)
+    # def is_health_point_lost(self,current_hp,img):
+    def is_health_point_lost(self,img):
+        
+        # # Maj new 
+        # img_hp = img[self.h_min_hp:self.h_max_hp,self.w_min_hp:self.w_max_hp]
+        # gray = cv2.cvtColor(img_hp, cv2.COLOR_BGR2GRAY)
+        # _,self.new_hp = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
+        # # Correlation
+        # res = cv2.matchTemplate(self.prev_hp, self.new_hp, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
+        # # Maj prev
+        # self.prev_hp = self.new_hp.copy()
 
-    def step(self,action_idx, current_hp, temps):    # correspond à un épisode, renvoie : next_state, reward, done, trunc, info
-        done = False
-        reward = 0
+        # return (res < self.correlation_threshold).any()
+
+        img_hp = img[self.h_min_hp:self.h_max_hp,self.w_min_hp:self.w_max_hp]
+        if self.current_hp == 3:
+            res = cv2.matchTemplate(img_hp \
+                                , self.img_2hp, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
+            
+            return (res >= 0.95).any()   # commenter si version  multithreading 
+            
+        if self.current_hp == 2:
+            res1 = cv2.matchTemplate(img_hp \
+                                , self.img_1hp_1, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
+            res2 = cv2.matchTemplate(img_hp \
+                                , self.img_1hp_2, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
+            return (res2 >= self.correlation_threshold).any() or (res1 >=self.correlation_threshold).any()    # commenter si version  multithreading 
+        
+        return False
+
+    def act_in_environment(self, action_idx):
+        keys = self.actions_list[action_idx]
+        timing = self.hold_timings[action_idx]
+        if self.controls_enabled == True:
+            for key in keys:
+                pg.keyDown(key)
+            time.sleep(timing)
+            for key in keys:
+                pg.keyUp(key)
+
+    def step(self,action_idx, temps):    # correspond à un épisode, renvoie : next_state, reward, done, trunc, info
+        self.done = False
+        self.reward = 0
+        # t = time.time()
+
+        # Action de l'agent
+        act_thread = threading.Thread(target=self.act_in_environment, args=[action_idx])    # parallélisation de l'action
+        act_thread.start()
 
         with mss() as sct:
 
             # Mise a jour de l'image via capture d'écran 
 
+            bgra_array = np.array(sct.grab(self.mon_for_correlation)  , dtype=np.uint8)
+            prev =cv2.cvtColor(bgra_array, cv2.COLOR_BGRA2GRAY)
             bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
-            img =  bgra_array[:, :, :3]     # convertion BGR
+            img =  bgra_array[:, :, :3]     
 
             # Game Over
 
             if self.is_GameOver(img) : 
-                done = True
+                self.done = True
                 print("You Died !")
                 time.sleep(3)
                 bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
                 img =  bgra_array[:, :, :3]
-                progression = self.compute_progression(img)             
-                # reward += int(40*progression)                           # reward en fonction dela progression
-                reward +=  self.reward_dict['GameOver']
-                print(f"PROGRESSION : {progression:.4f}")
-                pg.press('enter') # recommencer une partie en pressant entrer sur Retry
+                progress = self.compute_progress(img)           
+                print(f"Progress : {progress:.4f}")
+                self.last_progress = progress  
+                self.reward +=  self.reward_dict['GameOver']
+                pg.press('enter')           # recommencer une partie 
             
             # Game Win
 
             if self.is_GameWin(img):
-                done = True
-                reward += self.reward_dict['GameWin']
+                self.done = True
+                self.reward += self.reward_dict['GameWin']
                 print("GG ! You won !")
-                exit()      # dans un premier temps, cuphead n'arrivera pas jusqu'ici...
+                exit()      # dans un 1er temps
             
             # Perte d'HP
-            
-            if self.is_health_point_lost(current_hp=current_hp, img=img):
-                print('HP lost !')
-                reward += self.reward_dict['Health_point_lost']
-                current_hp += -1
 
-            # Action de l'agent et screenshot avant-après
+            if self.current_hp>1 and self.is_health_point_lost(img=img):
+                self.current_hp += -1
+                # print(f'HP lost ! HP left : {self.current_hp}')
+                self.reward += self.reward_dict['Health_point_lost']
 
-            bgra_array = np.array(sct.grab(self.mon_for_correlation)  , dtype=np.uint8)
-            prev =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-            self.interact.act_in_environment(action_idx)
-            bgra_array = np.array(sct.grab(self.mon_for_correlation)  , dtype=np.uint8)
-            next =cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-                        
             # Génération de l'état suivant
 
             next_state = torch.zeros(self.dim_state,self.resize_h,self.resize_w)
@@ -327,33 +349,28 @@ class CupHeadEnvironment(object):
                 bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
                 img_state =  bgra_array[:, :, :3]  # copy pour régler le pb des srides négatifs par géré par torch
                 next_state[k] = self.transform(img_state.copy()) 
-            
-            # Optical flow     
-
-            # flow = cv2.calcOpticalFlowFarneback(prev, next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
-            # mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
-            # print(mag.mean())
-            # if (5*np.pi/6 < ang.mean() < 7*np.pi/6) and mag.mean() > 5 :
-            #     print("")
-            #     print("Cuphead Avance !")
-            #     reward += self.reward_dict['Forward']                      # récompense pour avancer
+                time.sleep(self.sleep_between_state_frames)  # 1/24 sec
 
             # Correlation
 
+            bgra_array = np.array(sct.grab(self.mon_for_correlation)  , dtype=np.uint8)
+            next =cv2.cvtColor(bgra_array, cv2.COLOR_BGRA2GRAY)
             res = cv2.matchTemplate(prev,next, eval('cv2.TM_CCOEFF_NORMED')) 
-            print(res)
-            if (res < 0.8).any() and action_idx in self.forward_action_index_list:
-                print("")
-                print("Cuphead Avance !")
-                reward += self.reward_dict['Forward']                      # récompense pour avancer
+            if (res < 0.9).any() and action_idx in self.forward_action_index_list:
+                # print("Moving Forward !")
+                self.reward += self.reward_dict['Forward']                      # récompense pour avancer
    
             # Limite de temps pour un épisode atteinte
 
             if temps > self.episode_time_limite:
-                done = True
-                reward += -10 
+                self.done = True
+                self.reward += -10 
                 print("Time limite reached, reseting...")
-            return next_state, reward, done, current_hp
+
+            act_thread.join()    # pour synchro / attendre le thread avant de terminer 
+
+            # print(t - time.time())
+            return next_state, self.reward, self.done
     
 
 if __name__ == '__main__':

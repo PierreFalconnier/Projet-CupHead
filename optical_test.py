@@ -155,3 +155,16 @@ if __name__ == '__main__':
     print(__doc__)
     main(use_cam=False)
     cv.destroyAllWindows()
+
+
+
+
+    # Optical flow --> partie de environment
+
+    # flow = cv2.calcOpticalFlowFarneback(prev, next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+    # mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+    # print(mag.mean())
+    # if (5*np.pi/6 < ang.mean() < 7*np.pi/6) and mag.mean() > 5 :
+    #     print("")
+    #     print("Cuphead Avance !")
+    #     reward += self.reward_dict['Forward']                      # récompense pour avancer
