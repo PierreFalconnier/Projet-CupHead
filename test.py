@@ -21,7 +21,61 @@ from PIL import Image
 import pprint
 
 
+# print(torch.cuda.is_available())
+# print(torch.cuda.device_count())
+# print(torch.cuda.current_device())
+# print(torch.cuda.device(0))
+# print(torch.cuda.get_device_name(0)) ; exit()
+
+
 if __name__=='__main__':
+    time.sleep(2)
+    keys=["z","right"]
+    timings = [0.5,1]
+    
+    # Press differents keys with differents timings
+    # s = time.time()
+
+    # max = max(timings)
+    # n = len(keys)
+    # start = time.time()
+    
+    # for key in keys:
+    #     pg.keyDown(key)
+    # while time.time() - start < max:
+    #     for i,key in enumerate(keys):
+    #         if time.time() - start > timings[i]: pg.keyUp(key)
+    # for key in keys:
+    #     pg.keyUp(key)
+
+    # print(abs(s-time.time()))
+    
+    timing = 0.1
+    # s = time.time()
+    
+    for key in keys:
+        pg.keyDown(key)
+    time.sleep(timing)
+    for key in keys:
+        pg.keyUp(key)
+
+    keys=["shiftleft"]
+    
+    for key in keys:
+        pg.keyDown(key)
+    time.sleep(timing)
+    for key in keys:
+        pg.keyUp(key)
+    
+    # print(abs(s-time.time()))
+
+
+    # for key in keys:
+    #         print(key) 
+    #         pg.keyDown(key)
+    # time.sleep(0.4)
+    # for key in keys:
+    #     pg.keyUp(key)
 
     if os.name == 'nt':
         import pygetwindow as gw
@@ -47,12 +101,12 @@ if __name__=='__main__':
 
   
 
-    step = 20000
+    step = 50000
     proba = 0.5
     rate = 0.999965
     print("STEPS needed to reach proba : ",math.log(proba)/math.log(rate))
     print("Rate to reach proba after given step : ", proba**(1/step))
-
+    exit()
     # mon = {'top': 0, 'left': 0, 'width': 1920//2, 'height': 1080//2} 
     mon = {'top': 1080//4, 'left': 0, 'width': 1920//2, 'height': 1080//2} 
 
@@ -159,7 +213,27 @@ cv2.destroyAllWindows()
 
 
         
+# class InteractWithKeyboard(threading.Thread):
 
+#     def __init__(self,actions_list = [], 
+#     hold_timings = [],
+#     controls_enabled=True,
+#     mon_for_correlation=None,):
+#         super().__init__()
+#         self.actions_list = actions_list  
+#         self.hold_timings = hold_timings
+#         self.controls_enabled = controls_enabled
+#         self.mon_for_correlation = mon_for_correlation
+
+#     def act_in_environment(self, action_idx):
+#         keys = self.actions_list[action_idx]
+#         timing = self.hold_timings[action_idx]
+#         if self.controls_enabled == True:
+#             for key in keys:
+#                 pg.keyDown(key)
+#             time.sleep(timing)
+#             for key in keys:
+#                 pg.keyUp(key)
         
 
         

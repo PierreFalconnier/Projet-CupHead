@@ -37,28 +37,6 @@ def iprint(img):
 
 import threading
 
-class InteractWithKeyboard(threading.Thread):
-
-    def __init__(self,actions_list = [], 
-    hold_timings = [],
-    controls_enabled=True,
-    mon_for_correlation=None,):
-        super().__init__()
-        self.actions_list = actions_list  
-        self.hold_timings = hold_timings
-        self.controls_enabled = controls_enabled
-        self.mon_for_correlation = mon_for_correlation
-
-    def act_in_environment(self, action_idx):
-        keys = self.actions_list[action_idx]
-        timing = self.hold_timings[action_idx]
-        if self.controls_enabled == True:
-            for key in keys:
-                pg.keyDown(key)
-            time.sleep(timing)
-            for key in keys:
-                pg.keyUp(key)
-
 # Actions
 # actions_binds_list = ["x"    ,"z"   ,"v"      ,"shiftleft","c"   ,"right","left","up","down","tab"          ]
 # actions_names_list = ["shoot","jump","exshoot","dash"     ,"lock","right","left","up","down","switch_weapon"]
@@ -128,6 +106,7 @@ class CupHeadEnvironment(object):
         self.controls_enabled = controls_enabled   # si True, le programme utilise PyAutoGUI et controle le clavier
 
         self.current_hp = 3 
+        # self.is_dead = False
         self.last_progress = 0
         self.done = False
         self.reward = 0
@@ -221,6 +200,8 @@ class CupHeadEnvironment(object):
     
     def reset_episode(self):
         time.sleep(2)
+        self.current_hp = 3
+        self.is_dead = False
         img_tensor = torch.zeros((self.dim_state,self.resize_h, self.resize_w))
         return img_tensor
     
@@ -283,25 +264,38 @@ class CupHeadEnvironment(object):
                                 , self.img_1hp_2, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
             return (res2 >= self.correlation_threshold).any() or (res1 >=self.correlation_threshold).any()    # commenter si version  multithreading 
         
+
+        if self.current_hp == 1:   # detection de la mort, correlation avec images saved 1hp
+            res1 = cv2.matchTemplate(img_hp \
+                                , self.img_1hp_1, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
+            res2 = cv2.matchTemplate(img_hp \
+                                , self.img_1hp_2, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
+            return (res2 < self.correlation_threshold).any() and (res1 < self.correlation_threshold).any()    # commenter si version  multithreading 
+        
         return False
 
-    def act_in_environment(self, action_idx):
+
+    def act_in_environment(self, action_idx, event_is_dead):
         keys = self.actions_list[action_idx]
         timing = self.hold_timings[action_idx]
         if self.controls_enabled == True:
+            start = time.time()
             for key in keys:
                 pg.keyDown(key)
-            time.sleep(timing)
+            while (time.time() - start < timing) and event_is_dead.is_set() == False :
+                pass
+            # time.sleep(timing)
             for key in keys:
                 pg.keyUp(key)
 
     def step(self,action_idx, temps):    # correspond à un épisode, renvoie : next_state, reward, done, trunc, info
         self.done = False
         self.reward = 0
+        event_is_dead = threading.Event()
         # t = time.time()
 
         # Action de l'agent
-        act_thread = threading.Thread(target=self.act_in_environment, args=[action_idx])    # parallélisation de l'action
+        act_thread = threading.Thread(target=self.act_in_environment, args=[action_idx, event_is_dead])    # parallélisation de l'action
         act_thread.start()
 
         with mss() as sct:
@@ -314,15 +308,17 @@ class CupHeadEnvironment(object):
             img =  bgra_array[:, :, :3]     
 
             # Game Over
-
-            if self.is_GameOver(img) : 
+            # if self.is_GameOver(img) : 
+            if self.current_hp==1 and self.is_health_point_lost(img=img) : 
+                event_is_dead.set()  # boolean partagé pour le act_thread pour stopper l'interaction
+                # self.is_dead = True
                 self.done = True
                 print("You Died !")
-                time.sleep(3)
+                time.sleep(3.5)
                 bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
                 img =  bgra_array[:, :, :3]
                 progress = self.compute_progress(img)           
-                print(f"Progress : {progress:.4f}")
+                print(f"Progress in level : {int(100*progress)} %")
                 self.last_progress = progress  
                 self.reward +=  self.reward_dict['GameOver']
                 pg.press('enter')           # recommencer une partie 
@@ -366,6 +362,11 @@ class CupHeadEnvironment(object):
                 self.done = True
                 self.reward += -10 
                 print("Time limite reached, reseting...")
+                pg.press('esc')
+                time.sleep(0.4)
+                pg.press('down')
+                time.sleep(0.1)
+                pg.press('enter')
 
             act_thread.join()    # pour synchro / attendre le thread avant de terminer 
 
