@@ -67,23 +67,34 @@ class CupHeadEnvironment(object):
 
 
         # Check if game running
-    
-        is_cuphead_launched = False
-        for w in Window.list():
-            if w.wm_name == 'Cuphead':
-                is_cuphead_launched = True
+
+        if os.name == 'nt':
+            import win32gui as gw
+            if len(gw.getWindowsWithTitle('Cuphead')) != 2 :
+                print('Game not running, exiting.') ; exit()
+            window = gw.getWindowsWithTitle('Cuphead')[-1]
+            window.activate()
+            p = window.topleft
+            x,y,w,h = p.x+2,p.y+25, window.width-5, window.height-29
+            # pg.moveTo(x,y)
+            # pg.moveTo(x+w,y+h)
+        else:
+            is_cuphead_launched = False
+            for w in Window.list():
+                if w.wm_name == 'Cuphead':
+                    is_cuphead_launched = True
+                    w.activate()
+                    break
+            if is_cuphead_launched == False : 
+                print('Game not running, exiting.') ; exit()
+            w_active = Window.get_active()
+            if w_active.wm_name != 'Cuphead':
+                print('Cuphead window not on screen ! Activating cuphead window.')
                 w.activate()
-                break
-        if is_cuphead_launched == False : 
-            print('Game not running, exiting.') ; exit()
-        w_active = Window.get_active()
-        if w_active.wm_name != 'Cuphead':
-            print('Cuphead window not on screen ! Activating cuphead window.')
-            w.activate()
-        
-        x,y,w,h = w.x-1,w.y-38,w.w,w.h   # prise en compte de l'offset de la bar de titre, jai utilsé xwininfo dans un terminal
-        # pg.moveTo(x,y)
-        # pg.moveTo(x+w,y+h)
+            
+            x,y,w,h = w.x-1,w.y-38,w.w,w.h   # prise en compte de l'offset de la bar de titre, jai utilsé xwininfo dans un terminal
+            # pg.moveTo(x,y)
+            # pg.moveTo(x+w,y+h)
 
         # Get window position and size needed for screenshots
         print('Cuphead window box(x,y,w,h) : ',x,y,w,h)

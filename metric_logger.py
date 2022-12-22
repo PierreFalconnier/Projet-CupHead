@@ -19,6 +19,7 @@ class MetricLogger:
         self.ep_progresses_plot = save_dir / "progress_plot.jpg"
 
         self.loss_plot = save_dir / "loss_plot.jpg"
+        self.reward_plot = save_dir / "reward_plot.jpg"
 
 
 
@@ -133,27 +134,20 @@ class MetricLogger:
             f"Step {step} - "
             f"Progression {progress:.3f} - "
             f"Epsilon {epsilon:.6f} - "
-            f"Loss {loss:.6f} - "
+            f"Loss {loss} - "
             f"Average reward {reward_mean:.2f}"
             f"Time Delta {time_since_last_record:.1f} - "
             f"Time {datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}"
         )
 
         with open(self.save_log, "a") as f:
-            if loss:
                 f.write(
                     f"{episode:8d}{step:8d}{progress:.3f}{epsilon:10.3f}"
-                    f"{loss:15.3f}{reward_mean:.2f}"
+                    f"{loss}{reward_mean:.2f}"
                     f"{time_since_last_record:15.3f}"
                     f"{datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S'):>20}\n"
                 )
-            else:
-                f.write(
-                    f"{episode:8d}{step:8d}{progress:.3f}{epsilon:10.3f}{reward_mean:.2f}"
-                    "None"
-                    f"{time_since_last_record:15.3f}"
-                    f"{datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S'):>20}\n"
-                )
+            
                 
             
         plt.plot(self.loss_list)

@@ -178,11 +178,6 @@ previous_loss = None
 if CONTROLS_ENABLED:
     if os.name == 'nt':
         print("WINDOWS")
-        # import pygetwindow as gw
-        # window = gw.getWindowsWithTitle('Cuphead')[-1]
-        # window.restore()
-        print("Go on the game...")
-        time.sleep(5)
     else:
         print("LINUX")
       
