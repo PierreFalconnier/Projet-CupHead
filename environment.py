@@ -76,6 +76,9 @@ class CupHeadEnvironment(object):
             window.activate()
             p = window.topleft
             x,y,w,h = p.x+2,p.y+25, window.width-5, window.height-29
+            print('ATTENTION, pour Windows, set w,h manually in environment.py')
+            time.sleep(1)
+            w,h = 1176, 664
             # pg.moveTo(x,y)
             # pg.moveTo(x+w,y+h)
         else:

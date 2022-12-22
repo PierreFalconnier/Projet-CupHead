@@ -42,10 +42,13 @@ x = p.x+2
 y = p.y+25
 h= window.height-29
 w = window.width-5
+h=664
+w =1176
 print(x,y)
 
 import pyautogui as pg
 
 # pg.displayMousePosition() 
-
+pg.moveTo((x,y))
+time.sleep(2)
 pg.moveTo((x+w,y+h))
