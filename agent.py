@@ -24,6 +24,7 @@ class CupHead(object):
         learning_rate = 0.001,
         sync_every=1e2,
         device = "cuda",
+        learn_during_episode = False,
         ):
 
         ## act()
@@ -32,13 +33,13 @@ class CupHead(object):
         self.save_dir = save_dir
         self.logging = logging
 
-        if device == "cuda":
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            use_cuda = torch.cuda.is_available()
-            print(f"Using CUDA: {use_cuda}")
-            print()
-        else :
-            self.device = device
+        # if device == "cuda":
+        #     self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        #     use_cuda = torch.cuda.is_available()
+        #     print(f"Using CUDA: {use_cuda}")
+        #     print()
+       
+        self.device = device
 
         # CupHead's DNN to predict the most optimal action
         self.net = CupHeadNet(self.state_dim, self.action_dim).float()
@@ -48,8 +49,9 @@ class CupHead(object):
         self.exploration_rate_decay = exploration_rate_decay
         self.exploration_rate_min = exploration_rate_min
         self.curr_step = 0
+        self.curr_ep = 0
 
-        self.save_every = 5e5  # no. of experiences between saving Mario Net
+        self.save_every = 100  # no. of experiences between saving Cuphead Net
 
         ## cache() and recall()
 
@@ -62,11 +64,13 @@ class CupHead(object):
 
         ## update_Q_online() and sync_Q_online
 
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=learning_rate)
+        self.learning_rate = learning_rate
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.learning_rate)
         self.loss_fn = torch.nn.SmoothL1Loss()
 
         ## learn()
 
+        self.learn_during_episode = learn_during_episode
         self.burnin = burnin  # min. steps before training
         self.learn_every = learn_every  # no. of steps between updates to Q_online
         self.sync_every = sync_every  # no. of steps between Q_target & Q_online sync
@@ -90,6 +94,7 @@ class CupHead(object):
         else:
             state = state[0].__array__() if isinstance(state, tuple) else state.__array__()
             state = torch.tensor(state, device=self.device).unsqueeze(0)
+            # state = torch.tensor(state, device="cpu").unsqueeze(0)
             action_values = self.net(state, model="online")
             action_idx = torch.argmax(action_values, axis=1).item()
 
@@ -117,11 +122,17 @@ class CupHead(object):
         # state = first_if_tuple(state).__array__()
         # next_state = first_if_tuple(next_state).__array__()
 
-        state = torch.tensor(state, device=self.device)
-        next_state = torch.tensor(next_state, device=self.device)
-        action = torch.tensor([action], device=self.device)
-        reward = torch.tensor([reward], device=self.device)
-        done = torch.tensor([done], device=self.device)
+        # state = torch.tensor(state, device=self.device)
+        # next_state = torch.tensor(next_state, device=self.device)
+        # action = torch.tensor([action], device=self.device)
+        # reward = torch.tensor([reward], device=self.device)
+        # done = torch.tensor([done], device=self.device)
+
+        state = torch.tensor(state, device="cpu")
+        next_state = torch.tensor(next_state, device="cpu")
+        action = torch.tensor([action], device="cpu")
+        reward = torch.tensor([reward], device="cpu")
+        done = torch.tensor([done], device="cpu")
 
         self.memory.append((state, next_state, action, reward, done,))
 
@@ -170,20 +181,40 @@ class CupHead(object):
             print(f"CupHeadNet saved to {save_path} at step {self.curr_step}")
     
     def learn(self):
-        if self.curr_step % self.sync_every == 0:
-            self.sync_Q_target()
+        if self.learn_during_episode:
+            if self.curr_step % self.sync_every == 0:
+                self.sync_Q_target()
 
-        if self.curr_step % self.save_every == 0:
-            self.save()
+            # if self.curr_step % self.save_every == 0:
+            #     self.save()
 
-        if self.curr_step < self.burnin:
-            return None, None
+            if self.curr_step < self.burnin:
+                return None, None
 
-        if self.curr_step % self.learn_every != 0:
-            return None, None
+            if self.curr_step % self.learn_every != 0:
+                return None, None
+        else:
+            if self.curr_ep % self.sync_every == 0:
+                self.sync_Q_target()
+
+            # if self.curr_ep % self.save_every == 0:
+            #     self.save()
+            # if self.curr_ep < self.burnin:
+            #     return None, None
+            # if self.curr_ep % self.learn_every != 0:
+            #     return None, None
 
         # Sample from memory
+        
+
         state, next_state, action, reward, done = self.recall()
+        if self.device != "cpu" :
+            # print(f"Transfer : memory to {self.device}")
+            state=state.to(device=self.device)
+            next_state=next_state.to(device=self.device)
+            action=action.to(device=self.device)
+            reward=reward.to(device=self.device)
+            done=done.to(device=self.device)
 
         # Get TD Estimate
         td_est = self.td_estimate(state, action)
@@ -193,5 +224,5 @@ class CupHead(object):
 
         # Backpropagate loss through Q_online
         loss = self.update_Q_online(td_est, td_tgt)
-    
+
         return (td_est.mean().item(), loss)
