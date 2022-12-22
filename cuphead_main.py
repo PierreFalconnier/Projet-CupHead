@@ -11,6 +11,8 @@ from environment import CupHeadEnvironment
 import os, sys
 from pprint import pprint 
 from tqdm import tqdm
+from glob import glob
+import threading
 
 pg.PAUSE = 0
 
@@ -19,14 +21,18 @@ CONSTANT_SHOOTING    = True
 TRAINING             = True                    # Entrainer ou inference
 TRAINING_AND_PLAYING = TRAINING and True
 TRAINING_ON_MEMORY   = TRAINING and not(TRAINING_AND_PLAYING)
-RESUME_CHECKPOINT    = TRAINING and False      # Reprendre un entrainement
+RESUME_CHECKPOINT    = TRAINING and True      # Reprendre un entrainement
 LOGGING              = TRAINING and True       # Logger pendant entrainement 
 dict_bool = {'TRAINING':TRAINING ,'TRAINING_AND_PLAYING':TRAINING_AND_PLAYING,'TRAINING_ON_MEMORY':TRAINING_ON_MEMORY,'RESUME_CHECKPOINT':RESUME_CHECKPOINT,'LOGGING':LOGGING,'CONTROLS_ENABLED':CONTROLS_ENABLED, 'CONSTANT_SHOOTING':CONSTANT_SHOOTING}
 pprint(dict_bool) 
 
 save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-CHECKPOINT_PATH = Path("checkpoints") / "2022-12-22T15-46-06"
+CHECKPOINT_PATH = Path("checkpoints") / "2022-12-22T20-30-45"
 
+# l = glob('checkpoints/*')
+# l.sort()
+# CHECKPOINT_PATH = Path(l[-1])
+print('CHECKPOINT_PATH : ',CHECKPOINT_PATH)
 
 if TRAINING:
     # logging
@@ -35,12 +41,12 @@ if TRAINING:
         logger = MetricLogger(save_dir)
     # env
     # MODIFIER les controls du jeu si conflie avec les touches pour naviguer dans le menu, sinon bugs
-    ACTION_LIST  = [["r"],["r"],["l"],["l"],["a"],["a","r"],["d"],["a","l"],["s"]]   # s correspond à 'still', cuphead ne fait rien
-    HOLD_TIMINGS = [0.1,   0.6,  0.6,  0.1,  0.1,    0.4  ,  0.1,    0.4   , 0.2]
+    ACTION_LIST  = [["r"],["r"],["l"],["l"],["a"],["a","r"],["r","d"],["a","l"],["l","d"],["s"]]   # s correspond à 'still', cuphead ne fait rien
+    HOLD_TIMINGS = [0.1,   0.6,  0.6,  0.1,  0.1,    0.4  ,  0.1,        0.4   , 0.1,     0.2]
     # ACTION_LIST  = [["r"],["a","r"],["d"]]   # "a" sauter, "r" droite, "l" gauche, "d" dash, "s" ne rien faire
     # HOLD_TIMINGS = [0.6,           0.4,      0.6]
     FORWARD_ACTION_INDEX_LIST = [0,1,5,6]
-    BACKWARD_ACTION_INDEX_LIST = [2,3,7]
+    BACKWARD_ACTION_INDEX_LIST = [2,3,7,8]
     SCREEN_WIDTH, SCREEN_HEIGHT = pg.size() 
     RESIZE_H = 256
     RESIZE_W = 256
@@ -54,12 +60,13 @@ if TRAINING:
         'Backward':         -0.1,
         }
     # agent
-    EXPLORATION_RATE_DECAY = 0.999986137152479   # 0.5 proba reached after 50 000 steps
+    # EXPLORATION_RATE_DECAY = 0.999986137152479   # 0.5 proba reached after 50 000 steps
+    EXPLORATION_RATE_DECAY = 0.9999   # 0.5 proba reached after 50 000 steps
     EXPLORATION_RATE_MIN = 0.1
     BATCH_SIZE = 32
     GAMMA = 0.9
     LEARN_DURING_EPISODE = False                # Si False, learn entre les épisodes -> pas de ralentissements de cuphead 
-    BURNIN = 0  # min. eps or steps before training
+    BURNIN = 5  # min. eps or steps before training
     LEARN_EVERY = 1  # no. of eps or steps between updates to Q_online. 1 = every episodes
     SYNC_EVERY = 10  # no. of eps or steps between Q_target & Q_online sync
     LEARNING_RATE = 0.001
@@ -160,8 +167,9 @@ if not(TRAINING) or RESUME_CHECKPOINT:
     STAT_DICT_MODEL_PATH = CHECKPOINT_PATH / 'model_cuphead_stat_dict.pt' 
     cuphead.net.load_state_dict(torch.load(STAT_DICT_MODEL_PATH))
 
-# # Load memory
+# Load memory
 # cuphead.memory = torch.load(CHECKPOINT_PATH / 'cuphead_memory.pt' )
+# print(len(cuphead.memory)) ; exit()
 
 # Start
 episodes = 10000
@@ -193,14 +201,24 @@ if TRAINING_AND_PLAYING or TRAINING==False:     # Si apprentissage avec jeu ou i
         start_time = time.time()
         prev_frame_time = time.time()
         temps = 0
+        reward_list = []
         step = cuphead.curr_step
         state = env.reset_episode()
         if CONTROLS_ENABLED and CONSTANT_SHOOTING:
             pg.keyDown('x')
 
         # Play the game!
-        pg.press('enter')
+        # pg.press('enter')
+        
+        print('New episode')
+        pg.keyDown('enter')
+        time.sleep(0.1)
+        pg.keyUp('enter')
         while True:  
+
+            
+            # start = time.time()
+
             # Run agent on the state
             action_idx = cuphead.act(state)
 
@@ -209,8 +227,10 @@ if TRAINING_AND_PLAYING or TRAINING==False:     # Si apprentissage avec jeu ou i
             
             # Remember
             if TRAINING:
+                # cache_thread = threading.Thread(target=cuphead.cache, args=[state, next_state, action_idx, reward, done])    # parallélisation de l'action
+                # cache_thread.start()
                 cuphead.cache(state, next_state, action_idx, reward, done)   # 80 bytes
-
+                # cache_thread.join()
             # Update state
             state = next_state
 
@@ -227,22 +247,31 @@ if TRAINING_AND_PLAYING or TRAINING==False:     # Si apprentissage avec jeu ou i
             # # print(f'Step {cuphead.curr_step} - q {q} - Loss {loss}')
             # # print(f'Action {env.actions_list[action_idx]} - Reward {reward}')
 
+            if TRAINING and LOGGING and LEARN_DURING_EPISODE == False   : 
+                reward_list.append(reward)
+
             # Check if end of episode
             if done:
             
-                if LEARN_DURING_EPISODE == False   : # learn between episodes
+                if TRAINING and LEARN_DURING_EPISODE == False   : # learn between episodes
                     loss = None
+                    loss_list = []
                     cuphead.curr_ep = e
                     cuphead.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # device used for training
                     cuphead.net.to(device=cuphead.device)
                     if e >= BURNIN:
                         print('Learning...')
-                        for _ in tqdm(range(min(len(cuphead.memory),5000))):
+                        for _ in tqdm(range(min(len(cuphead.memory),2000))):
                             q, loss = cuphead.learn()
+                            loss_list.append(loss)
+                    if len(loss_list): loss = sum(loss_list)/len(loss_list)
                     cuphead.device = "cpu"
                     cuphead.net.to(device=cuphead.device)
+                    if LOGGING : reward_mean = sum(reward_list)/len(reward_list)
             
                 break
+            
+            # print(time.time()-start)
 
             temps = time.time()-start_time
             
@@ -252,12 +281,12 @@ if TRAINING_AND_PLAYING or TRAINING==False:     # Si apprentissage avec jeu ou i
             if LEARN_DURING_EPISODE and LOGGING : 
                 logger.log_episode(env.last_progress)
                 if e % 1 == 0 and LOGGING:
-                    print(f"Logging episode {e}")
+                    # print(f"Logging episode {e}")
                     logger.record(episode=e, epsilon=cuphead.exploration_rate, step=cuphead.curr_step, progress= env.last_progress)
                 logger.init_episode()
             else:
-                print(f"Logging episode {e}")
-                logger.record_2(episode=e, epsilon=cuphead.exploration_rate, step=cuphead.curr_step,  progress = env.last_progress, loss = loss,)
+                # print(f"Logging episode {e}")
+                logger.record_2(episode=e, epsilon=cuphead.exploration_rate, step=cuphead.curr_step,  progress = env.last_progress, loss = loss, reward_mean=reward_mean)
                 logger.init_episode()
 
             if loss and previous_loss and loss<previous_loss :                                      # sauve que si amélioration
@@ -265,7 +294,7 @@ if TRAINING_AND_PLAYING or TRAINING==False:     # Si apprentissage avec jeu ou i
             if loss:
                 previous_loss = loss
             
-            if e % 1 == 0 :
+            if e % 20 == 0 :
                 print('Saving Cuphead memory...')
                 torch.save(cuphead.memory,os.path.join(save_dir,'cuphead_memory.pt'))
                 print('Done')
@@ -275,7 +304,7 @@ elif TRAINING_ON_MEMORY:
     print('Training on memory')
     EPOCH = 5
     cuphead.learning_rate = 0.001
-    cuphead.batch_size = 256
+    cuphead.batch_size = 128
     cuphead.sync_every = 5
     cuphead.memory = torch.load(CHECKPOINT_PATH / 'cuphead_memory.pt' ) 
     cuphead.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # device used for training
@@ -285,7 +314,7 @@ elif TRAINING_ON_MEMORY:
         loss_list = []
         cuphead.curr_ep = epoch
         print(f'Epoch : {epoch}')
-        for _ in tqdm(range(min(len(cuphead.memory),5000))):
+        for _ in tqdm(range(min(len(cuphead.memory),3000))):
             q, loss = cuphead.learn()
             loss_list.append(loss)
         print(sum(loss_list)/len(loss_list))

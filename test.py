@@ -50,22 +50,22 @@ if __name__=='__main__':
 
     # print(abs(s-time.time()))
     
-    timing = 0.1
-    # s = time.time()
+    # timing = 0.1
+    # # s = time.time()
     
-    for key in keys:
-        pg.keyDown(key)
-    time.sleep(timing)
-    for key in keys:
-        pg.keyUp(key)
+    # for key in keys:
+    #     pg.keyDown(key)
+    # time.sleep(timing)
+    # for key in keys:
+    #     pg.keyUp(key)
 
-    keys=["shiftleft"]
+    # keys=["shiftleft"]
     
-    for key in keys:
-        pg.keyDown(key)
-    time.sleep(timing)
-    for key in keys:
-        pg.keyUp(key)
+    # for key in keys:
+    #     pg.keyDown(key)
+    # time.sleep(timing)
+    # for key in keys:
+    #     pg.keyUp(key)
     
     # print(abs(s-time.time()))
 
@@ -103,7 +103,7 @@ if __name__=='__main__':
 
     step = 50000
     proba = 0.5
-    rate = 0.999965
+    rate = 0.9999
     print("STEPS needed to reach proba : ",math.log(proba)/math.log(rate))
     print("Rate to reach proba after given step : ", proba**(1/step))
     exit()

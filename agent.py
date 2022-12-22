@@ -3,6 +3,7 @@ import numpy as np
 import random
 from model import CupHeadNet
 from collections import deque
+import time
 
 
 
@@ -55,7 +56,7 @@ class CupHead(object):
 
         ## cache() and recall()
 
-        self.memory = deque(maxlen=100000)    # mémoire occupée : 100 000 * 80 bytes = 7,629394531 MBytes < 16 Mbytes
+        self.memory = deque(maxlen=10000)    # mémoire occupée : 100 000 * 80 bytes = 7,629394531 MBytes < 16 Mbytes
         self.batch_size = batch_size
 
         ## td_estimate and td_target()
@@ -128,6 +129,8 @@ class CupHead(object):
         # reward = torch.tensor([reward], device=self.device)
         # done = torch.tensor([done], device=self.device)
 
+        # start = time.time()
+
         state = torch.tensor(state, device="cpu")
         next_state = torch.tensor(next_state, device="cpu")
         action = torch.tensor([action], device="cpu")
@@ -135,6 +138,8 @@ class CupHead(object):
         done = torch.tensor([done], device="cpu")
 
         self.memory.append((state, next_state, action, reward, done,))
+
+        # print(time.time()-start)
 
     def recall(self):
         """

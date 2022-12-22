@@ -28,7 +28,9 @@ class MetricLogger:
         self.ep_avg_losses = []
         self.ep_avg_qs = []
         self.ep_progresses = []
+
         self.loss_list = []
+        self.reawrd_list = []
 
         # Moving averages, added for every call to record()
         self.moving_avg_ep_rewards = []
@@ -118,9 +120,10 @@ class MetricLogger:
             plt.savefig(getattr(self, f"{metric}_plot"))
             plt.clf()
 
-    def record_2(self,episode, epsilon, step,progress,loss):  # used when learn between episodes
+    def record_2(self,episode, epsilon, step,progress,loss, reward_mean):  # used when learn between episodes
         
         self.loss_list.append(loss)
+        self.reawrd_list.append(reward_mean)
         last_record_time = self.record_time
         self.record_time = time.time()
         time_since_last_record = np.round(self.record_time - last_record_time, 3)
@@ -130,7 +133,8 @@ class MetricLogger:
             f"Step {step} - "
             f"Progression {progress:.3f} - "
             f"Epsilon {epsilon:.6f} - "
-            f"Loss {loss} - "
+            f"Loss {loss:.6f} - "
+            f"Average reward {reward_mean:.2f}"
             f"Time Delta {time_since_last_record:.1f} - "
             f"Time {datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}"
         )
@@ -139,13 +143,13 @@ class MetricLogger:
             if loss:
                 f.write(
                     f"{episode:8d}{step:8d}{progress:.3f}{epsilon:10.3f}"
-                    f"{loss:15.3f}"
+                    f"{loss:15.3f}{reward_mean:.2f}"
                     f"{time_since_last_record:15.3f}"
                     f"{datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S'):>20}\n"
                 )
             else:
                 f.write(
-                    f"{episode:8d}{step:8d}{progress:.3f}{epsilon:10.3f}"
+                    f"{episode:8d}{step:8d}{progress:.3f}{epsilon:10.3f}{reward_mean:.2f}"
                     "None"
                     f"{time_since_last_record:15.3f}"
                     f"{datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S'):>20}\n"
@@ -154,4 +158,8 @@ class MetricLogger:
             
         plt.plot(self.loss_list)
         plt.savefig(getattr(self, "loss_plot"))
+        plt.clf()
+
+        plt.plot(self.reawrd_list)
+        plt.savefig(getattr(self, "reward_plot"))
         plt.clf()

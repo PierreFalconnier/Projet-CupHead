@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import os
 from torchvision.transforms import ToTensor, Resize, Grayscale, Compose
+from torchvision.transforms.functional import crop
 import torch
 
 if os.name == 'nt':
@@ -349,9 +350,16 @@ class CupHeadEnvironment(object):
             next_state = torch.zeros(self.dim_state,self.resize_h,self.resize_w)
             for k in range(self.dim_state):
                 bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
-                img_state =  bgra_array[:, :, :3]  # copy pour régler le pb des srides négatifs par géré par torch
+                img_state =  bgra_array[:,:, :3]  # copy pour régler le pb des srides négatifs par géré par torch
+                # img_state =  bgra_array[bgra_array.shape[0]//4:,bgra_array.shape[1]//8:7*bgra_array.shape[1]//8, :3]  # copy pour régler le pb des srides négatifs par géré par torch
+                # img_state =  bgra_array[bgra_array.shape[0]//4:,:, :3]  # copy pour régler le pb des srides négatifs par géré par torch
+                 
                 next_state[k] = self.transform(img_state.copy()) 
                 time.sleep(self.sleep_between_state_frames)  # 1/24 sec
+            
+            # for k in range(self.dim_state):
+            #     iprint(next_state[k])
+
 
             # Correlation
 
@@ -363,7 +371,7 @@ class CupHeadEnvironment(object):
                     # print("Moving Forward !")
                     self.reward += self.reward_dict['Forward']                      # récompense pour avancer
                 if action_idx in self.backward_action_index_list:
-                    # print("Moving Forward !")
+                    # print("Moving Backward !")
                     self.reward += self.reward_dict['Backward']                      # récompense pour avancer
 
                 
