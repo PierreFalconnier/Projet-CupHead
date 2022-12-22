@@ -18,6 +18,9 @@ class MetricLogger:
         self.ep_avg_qs_plot = save_dir / "q_plot.jpg"
         self.ep_progresses_plot = save_dir / "progress_plot.jpg"
 
+        self.loss_plot = save_dir / "loss_plot.jpg"
+
+
 
         # History metrics
         self.ep_rewards = []
@@ -25,6 +28,7 @@ class MetricLogger:
         self.ep_avg_losses = []
         self.ep_avg_qs = []
         self.ep_progresses = []
+        self.loss_list = []
 
         # Moving averages, added for every call to record()
         self.moving_avg_ep_rewards = []
@@ -39,7 +43,7 @@ class MetricLogger:
         # Timing
         self.record_time = time.time()
 
-    def log_step(self, reward, loss, q):
+    def log_step(self, reward, loss=None, q=None):
         self.curr_ep_reward += reward
         self.curr_ep_length += 1
         if loss:
@@ -47,7 +51,7 @@ class MetricLogger:
             self.curr_ep_q += q
             self.curr_ep_loss_length += 1
 
-    def log_episode(self,progress):
+    def log_episode(self,progress, loss=None, q=None):
         "Mark end of episode"
         self.ep_rewards.append(self.curr_ep_reward)
         self.ep_lengths.append(self.curr_ep_length)
@@ -85,7 +89,7 @@ class MetricLogger:
         self.record_time = time.time()
         time_since_last_record = np.round(self.record_time - last_record_time, 3)
 
-        mean_ep_progress = np.round(np.mean(self.ep_progresses[-5:]), 3)
+        mean_ep_progress = 100*np.round(np.mean(self.ep_progresses[-5:]), 3)
         self.moving_avg_ep_progresses.append(mean_ep_progress)
 
         print(
@@ -113,3 +117,41 @@ class MetricLogger:
             plt.plot(getattr(self, f"moving_avg_{metric}"))
             plt.savefig(getattr(self, f"{metric}_plot"))
             plt.clf()
+
+    def record_2(self,episode, epsilon, step,progress,loss):  # used when learn between episodes
+        
+        self.loss_list.append(loss)
+        last_record_time = self.record_time
+        self.record_time = time.time()
+        time_since_last_record = np.round(self.record_time - last_record_time, 3)
+
+        print(
+            f"Episode {episode} - "
+            f"Step {step} - "
+            f"Progression {progress:.3f} - "
+            f"Epsilon {epsilon:.6f} - "
+            f"Loss {loss} - "
+            f"Time Delta {time_since_last_record:.1f} - "
+            f"Time {datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}"
+        )
+
+        with open(self.save_log, "a") as f:
+            if loss:
+                f.write(
+                    f"{episode:8d}{step:8d}{progress:.3f}{epsilon:10.3f}"
+                    f"{loss:15.3f}"
+                    f"{time_since_last_record:15.3f}"
+                    f"{datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S'):>20}\n"
+                )
+            else:
+                f.write(
+                    f"{episode:8d}{step:8d}{progress:.3f}{epsilon:10.3f}"
+                    "None"
+                    f"{time_since_last_record:15.3f}"
+                    f"{datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S'):>20}\n"
+                )
+                
+            
+        plt.plot(self.loss_list)
+        plt.savefig(getattr(self, "loss_plot"))
+        plt.clf()
