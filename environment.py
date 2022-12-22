@@ -69,7 +69,7 @@ class CupHeadEnvironment(object):
         # Check if game running
 
         if os.name == 'nt':
-            import win32gui as gw
+            import pygetwindow as gw
             if len(gw.getWindowsWithTitle('Cuphead')) != 2 :
                 print('Game not running, exiting.') ; exit()
             window = gw.getWindowsWithTitle('Cuphead')[-1]
