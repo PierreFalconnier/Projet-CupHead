@@ -34,7 +34,7 @@ def iprint(img):
     plt.show()
 
 # Classe pour utiliser le clavier sur un nouveau thread
-
+import multiprocessing
 import threading
 
 # Actions
@@ -61,6 +61,7 @@ class CupHeadEnvironment(object):
         actions_list = [],
         hold_timings = [],
         forward_action_index_list = [],
+        backward_action_index_list = [],
         ) -> None:
 
 
@@ -101,6 +102,7 @@ class CupHeadEnvironment(object):
         self.actions_list = actions_list  
         self.hold_timings = hold_timings
         self.forward_action_index_list = forward_action_index_list
+        self.backward_action_index_list = backward_action_index_list
        
         self.actions_dim = len(self.actions_list)
         self.controls_enabled = controls_enabled   # si True, le programme utilise PyAutoGUI et controle le clavier
@@ -270,12 +272,12 @@ class CupHeadEnvironment(object):
                                 , self.img_1hp_1, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
             res2 = cv2.matchTemplate(img_hp \
                                 , self.img_1hp_2, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-            return (res2 < self.correlation_threshold).any() and (res1 < self.correlation_threshold).any()    # commenter si version  multithreading 
+            return (res2 < 0.2).any() and (res1 < 0.2).any()    # commenter si version  multithreading 
         
         return False
 
 
-    def act_in_environment(self, action_idx, event_is_dead):
+    def act_in_environment(self, action_idx, event_is_dead=False):
         keys = self.actions_list[action_idx]
         timing = self.hold_timings[action_idx]
         if self.controls_enabled == True:
@@ -308,20 +310,24 @@ class CupHeadEnvironment(object):
             img =  bgra_array[:, :, :3]     
 
             # Game Over
-            # if self.is_GameOver(img) : 
             if self.current_hp==1 and self.is_health_point_lost(img=img) : 
+            
+            # if self.is_GameOver(img):
+                # cv2.imwrite('test.png', img)
                 event_is_dead.set()  # boolean partagé pour le act_thread pour stopper l'interaction
-                # self.is_dead = True
                 self.done = True
                 print("You Died !")
-                time.sleep(3.5)
+                time.sleep(4)
+                # Progress
                 bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
                 img =  bgra_array[:, :, :3]
-                progress = self.compute_progress(img)           
-                print(f"Progress in level : {int(100*progress)} %")
-                self.last_progress = progress  
+                # print('Result from is_Gameover methode after sleep : ',self.is_GameOver(img))
+                self.last_progress = self.compute_progress(img)           
+                # print(f"Progress in level : {int(100*self.last_progress)} %")
+                # Reward
                 self.reward +=  self.reward_dict['GameOver']
-                pg.press('enter')           # recommencer une partie 
+                # Restart
+                # pg.press('enter')           
             
             # Game Win
 
@@ -352,21 +358,34 @@ class CupHeadEnvironment(object):
             bgra_array = np.array(sct.grab(self.mon_for_correlation)  , dtype=np.uint8)
             next =cv2.cvtColor(bgra_array, cv2.COLOR_BGRA2GRAY)
             res = cv2.matchTemplate(prev,next, eval('cv2.TM_CCOEFF_NORMED')) 
-            if (res < 0.9).any() and action_idx in self.forward_action_index_list:
-                # print("Moving Forward !")
-                self.reward += self.reward_dict['Forward']                      # récompense pour avancer
+            if (res < 0.9).any() : 
+                if action_idx in self.forward_action_index_list:
+                    # print("Moving Forward !")
+                    self.reward += self.reward_dict['Forward']                      # récompense pour avancer
+                if action_idx in self.backward_action_index_list:
+                    # print("Moving Forward !")
+                    self.reward += self.reward_dict['Backward']                      # récompense pour avancer
+
+                
    
             # Limite de temps pour un épisode atteinte
 
             if temps > self.episode_time_limite:
+                event_is_dead.set()
                 self.done = True
                 self.reward += -10 
                 print("Time limite reached, reseting...")
-                pg.press('esc')
-                time.sleep(0.4)
-                pg.press('down')
-                time.sleep(0.1)
-                pg.press('enter')
+                # if event_is_dead.is_set():
+                if self.is_GameOver(img):
+                    time.sleep(0.5)
+                    # pg.press('enter')
+                else:
+                    time.sleep(1)
+                    pg.press('esc')
+                    time.sleep(0.4)
+                    pg.press('down')
+                    time.sleep(0.1)
+                    # pg.press('enter')
 
             act_thread.join()    # pour synchro / attendre le thread avant de terminer 
 
