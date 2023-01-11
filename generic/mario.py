@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 from collections import deque
 import random, datetime, os, copy
+import math
 
 # Gym is an OpenAI toolkit for RL
 import gym
@@ -40,37 +41,56 @@ class MarioNet(nn.Module):
 
     def __init__(self, input_dim, output_dim):
         super().__init__()
-        c, h, w = input_dim
+        self.c, self.h, self.w = input_dim
 
-        if h != 84:
-            raise ValueError(f"Expecting input height: 84, got: {h}")
-        if w != 84:
-            raise ValueError(f"Expecting input width: 84, got: {w}")
+        # Model perso
+        self.kernel_size_list = [8,4,3]
+        self.stride_size_list = [4,2,1]
+        self.in_channels_list = [self.c,32,64]
+        self.out_channels_list = [32,64,64]
 
         self.online = nn.Sequential(
-            nn.Conv2d(in_channels=c, out_channels=32, kernel_size=8, stride=4),
+            nn.Conv2d(in_channels=self.in_channels_list[0], out_channels=self.out_channels_list[0], kernel_size=self.kernel_size_list[0], stride=self.stride_size_list[0]),
             nn.ReLU(),
-            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2),
+            nn.Conv2d(in_channels=self.in_channels_list[1], out_channels=self.out_channels_list[1], kernel_size=self.kernel_size_list[1], stride=self.stride_size_list[1]),
             nn.ReLU(),
-            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1),
+            nn.Conv2d(in_channels=self.in_channels_list[2], out_channels=self.out_channels_list[2], kernel_size=self.kernel_size_list[2], stride=self.stride_size_list[2]),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(3136, 512),
+            nn.Linear(self.compute_linear_dimensions(), 512),
             nn.ReLU(),
             nn.Linear(512, output_dim),
         )
 
+        model = self.online
+
+      
+
+        # # Find total parameters and trainable parameters
+        # total_params = sum(p.numel() for p in model.parameters())
+        # print(f'{total_params:,} total parameters.')
+        # total_trainable_params = sum(
+        #     p.numel() for p in model.parameters() if p.requires_grad)
+        # print(f'{total_trainable_params:,} training parameters.')
+
         self.target = copy.deepcopy(self.online)
 
-        # Q_target parameters are frozen.
-        for p in self.target.parameters():
-            p.requires_grad = False
+        # # Q_target parameters are frozen.
+        # for p in self.target.parameters():
+        #     p.requires_grad = False
 
     def forward(self, input, model):
         if model == "online":
             return self.online(input)
         elif model == "target":
             return self.target(input)
+    
+    def compute_linear_dimensions(self):
+        h = self.h
+        for k in range(len(self.kernel_size_list)):
+            h = math.floor(1+(h+2*0-1*(self.kernel_size_list[k]-1)-1)/self.stride_size_list[k])
+        linear_dimension = h*h*self.out_channels_list[-1]
+        return linear_dimension
 
 class SkipFrame(gym.Wrapper):
     def __init__(self, env, skip):
@@ -137,46 +157,59 @@ if gym.__version__ < '0.26':
 else:
     env = FrameStack(env, num_stack=4)
 
-class Mario:
-    def __init__():
-        pass
-
-    def act(self, state):
-        """Given a state, choose an epsilon-greedy action"""
-        pass
-
-    def cache(self, experience):
-        """Add the experience to memory"""
-        pass
-
-    def recall(self):
-        """Sample experiences from memory"""
-        pass
-
-    def learn(self):
-        """Update online action value (Q) function with a batch of experiences"""
-        pass
-
-
 
 class Mario:
-    def __init__(self, state_dim, action_dim, save_dir):
+
+    def __init__(self,
+                state_dim, 
+                action_dim, 
+                save_dir='trash',
+                exploration_rate_init = 0.99999975,
+                exploration_rate_decay= 0.99999975,
+                exploration_rate_min=0.1,
+                batch_size=32,
+                gamma=0.9,
+                burnin=1e4,
+                learn_every=3,
+                learning_rate = 0.00025,
+                sync_every=1e4,
+                device = "cuda" if torch.cuda.is_available() else "cpu",
+                learn_during_episode = True,
+                ) -> None:
+
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.save_dir = save_dir
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = device
 
         # Mario's DNN to predict the most optimal action - we implement this in the Learn section
         self.net = MarioNet(self.state_dim, self.action_dim).float()
         self.net = self.net.to(device=self.device)
 
-        self.exploration_rate = 1
-        self.exploration_rate_decay = 0.99999975
-        self.exploration_rate_min = 0.1
+        self.exploration_rate = exploration_rate_init
+        self.exploration_rate_decay = exploration_rate_decay
+        self.exploration_rate_min = exploration_rate_min
         self.curr_step = 0
 
-        self.save_every = 5e5  # no. of experiences between saving Mario Net
+        self.save_every = 5e4  # no. of experiences between saving Mario Net
+
+        self.burnin = burnin  # min. experiences before training
+        self.learn_every = learn_every  # no. of experiences between updates to Q_online
+        self.sync_every = sync_every  # no. of experiences between Q_target & Q_online sync
+
+        self.memory = deque(maxlen=100000)
+        self.batch_size = batch_size
+
+        self.gamma = gamma
+
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=learning_rate)
+        self.loss_fn = torch.nn.SmoothL1Loss()
+
+        self.learn_during_episode = learn_during_episode
+
+
 
     def act(self, state):
         """
@@ -207,11 +240,6 @@ class Mario:
         return action_idx
 
 
-class Mario(Mario):  # subclassing for continuity
-    def __init__(self, state_dim, action_dim, save_dir):
-        super().__init__(state_dim, action_dim, save_dir)
-        self.memory = deque(maxlen=100000)
-        self.batch_size = 32
 
     def cache(self, state, next_state, action, reward, done):
         """
@@ -245,34 +273,22 @@ class Mario(Mario):  # subclassing for continuity
         state, next_state, action, reward, done = map(torch.stack, zip(*batch))
         return state, next_state, action.squeeze(), reward.squeeze(), done.squeeze()
 
-    
 
-class Mario(Mario):
-    def __init__(self, state_dim, action_dim, save_dir):
-        super().__init__(state_dim, action_dim, save_dir)
-        self.gamma = 0.9
-
-    def td_estimate(self, state, action):
-        current_Q = self.net(state, model="online")[
+    def td_estimate(self, state, action, model='online'):
+        current_Q = self.net(state, model=model)[
             np.arange(0, self.batch_size), action
         ]  # Q_online(s,a)
         return current_Q
 
     @torch.no_grad()
-    def td_target(self, reward, next_state, done):
-        next_state_Q = self.net(next_state, model="online")
+    def td_target(self, reward, next_state, done, first_model='online',second_model='target'):
+        next_state_Q = self.net(next_state, model=first_model)
         best_action = torch.argmax(next_state_Q, axis=1)
-        next_Q = self.net(next_state, model="target")[
-            np.arange(0, self.batch_size), best_action
-        ]
+        with torch.no_grad():
+            next_Q = self.net(next_state, model=second_model)[
+                np.arange(0, self.batch_size), best_action
+            ]
         return (reward + (1 - done.float()) * self.gamma * next_Q).float()
-
-
-class Mario(Mario):
-    def __init__(self, state_dim, action_dim, save_dir):
-        super().__init__(state_dim, action_dim, save_dir)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.00025)
-        self.loss_fn = torch.nn.SmoothL1Loss()
 
     def update_Q_online(self, td_estimate, td_target):
         loss = self.loss_fn(td_estimate, td_target)
@@ -284,52 +300,78 @@ class Mario(Mario):
     def sync_Q_target(self):
         self.net.target.load_state_dict(self.net.online.state_dict())
 
-
-class Mario(Mario):
     def save(self):
-        save_path = (
-            self.save_dir / f"mario_net_{int(self.curr_step // self.save_every)}.chkpt"
-        )
-        torch.save(
-            dict(model=self.net.state_dict(), exploration_rate=self.exploration_rate),
-            save_path,
-        )
-        print(f"MarioNet saved to {save_path} at step {self.curr_step}")
-
-
-class Mario(Mario):
-    def __init__(self, state_dim, action_dim, save_dir):
-        super().__init__(state_dim, action_dim, save_dir)
-        self.burnin = 1e4  # min. experiences before training
-        self.learn_every = 3  # no. of experiences between updates to Q_online
-        self.sync_every = 1e4  # no. of experiences between Q_target & Q_online sync
+            save_path = (
+                self.save_dir / f"mario_net_{int(self.curr_step // self.save_every)}.chkpt"
+            )
+            torch.save(
+                dict(model=self.net.state_dict(), exploration_rate=self.exploration_rate),
+                save_path,
+            )
+            print(f"MarioNet saved to {save_path} at step {self.curr_step}")
 
     def learn(self):
-        if self.curr_step % self.sync_every == 0:
-            self.sync_Q_target()
+        if self.learn_during_episode:
+            if self.curr_step % self.sync_every == 0:
+                self.sync_Q_target()
 
-        if self.curr_step % self.save_every == 0:
-            self.save()
+            if self.curr_step % self.save_every == 0:
+                self.save()
 
-        if self.curr_step < self.burnin:
-            return None, None
+            if self.curr_step < self.burnin:
+                return None, None
 
-        if self.curr_step % self.learn_every != 0:
-            return None, None
+            if self.curr_step % self.learn_every != 0:
+                return None, None
 
-        # Sample from memory
-        state, next_state, action, reward, done = self.recall()
 
-        # Get TD Estimate
-        td_est = self.td_estimate(state, action)
+            state, next_state, action, reward, done = self.recall()
+            td_est = self.td_estimate(state, action)
+            td_tgt = self.td_target(reward, next_state, done)
+            loss = self.update_Q_online(td_est, td_tgt)
 
-        # Get TD Target
-        td_tgt = self.td_target(reward, next_state, done)
+            state, next_state, action, reward, done = self.recall()
+            td_est_2 = self.td_estimate(state, action, model='target')
+            td_tgt_2 = self.td_target(reward, next_state, done, first_model='target', second_model='online')
+            loss = self.update_Q_online(td_est_2, td_tgt_2)
 
-        # Backpropagate loss through Q_online
-        loss = self.update_Q_online(td_est, td_tgt)
+            return (td_est.mean().item(), loss)
+        
+        else:
+            
+            #---- First model (double Q learning)
+            state, next_state, action, reward, done = self.recall()
+            if self.device != "cpu" :
+                # print(f"Transfer : memory to {self.device}")
+                state=state.to(device=self.device)
+                next_state=next_state.to(device=self.device)
+                action=action.to(device=self.device)
+                reward=reward.to(device=self.device)
+                done=done.to(device=self.device)
+            # Get TD Estimate
+            td_est = self.td_estimate(state, action)
+            # Get TD Target
+            td_tgt = self.td_target(reward, next_state, done)
+            # Backpropagate loss through Q_online
+            loss = self.update_Q_online(td_est, td_tgt)
 
-        return (td_est.mean().item(), loss)
+            #---- Second model (double Q learning)
+            state, next_state, action, reward, done = self.recall()
+            if self.device != "cpu" :
+                # print(f"Transfer : memory to {self.device}")
+                state=state.to(device=self.device)
+                next_state=next_state.to(device=self.device)
+                action=action.to(device=self.device)
+                reward=reward.to(device=self.device)
+                done=done.to(device=self.device)
+            # Get TD Estimate
+            td_est_2 = self.td_estimate(state, action, model='target')
+            # Get TD Target
+            td_tgt_2 = self.td_target(reward, next_state, done, first_model='target', second_model='online')
+            # Backpropagate loss through Q_online
+            loss = self.update_Q_online(td_est_2, td_tgt_2)
+
+            return (td_est.mean().item(), loss)
 
 
 import numpy as np
@@ -346,7 +388,7 @@ class MetricLogger:
                 f"{'MeanLength':>15}{'MeanLoss':>15}{'MeanQValue':>15}"
                 f"{'TimeDelta':>15}{'Time':>20}\n"
             )
-        self.ep_rewards_plot = save_dir / "reward_palot.jpg"
+        self.ep_rewards_plot = save_dir / "reward_plot.jpg"
         self.ep_lengths_plot = save_dir / "length_plot.jpg"
         self.ep_avg_losses_plot = save_dir / "loss_plot.jpg"
         self.ep_avg_qs_plot = save_dir / "q_plot.jpg"
@@ -438,50 +480,51 @@ class MetricLogger:
             plt.savefig(getattr(self, f"{metric}_plot"))
             plt.clf()
     
+if __name__ == '__main__':
 
-use_cuda = torch.cuda.is_available()
-print(f"Using CUDA: {use_cuda}")
-print()
+    use_cuda = torch.cuda.is_available()
+    print(f"Using CUDA: {use_cuda}")
+    print()
 
-save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-save_dir.mkdir(parents=True)
+    save_dir = Path("mario") / "checkpoints"/ datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    save_dir.mkdir(parents=True)
 
-mario = Mario(state_dim=(4, 84, 84), action_dim=env.action_space.n, save_dir=save_dir)
+    mario = Mario(state_dim=(4, 84, 84), action_dim=env.action_space.n, save_dir=save_dir)
 
-logger = MetricLogger(save_dir)
+    logger = MetricLogger(save_dir)
 
-episodes = 50000
-from tqdm import tqdm
-for e in tqdm(range(episodes)):
+    episodes = 50000
+    from tqdm import tqdm
+    for e in tqdm(range(episodes)):
 
-    state = env.reset()
+        state = env.reset()
 
-    # Play the game!
-    while True:
+        # Play the game!
+        while True:
 
-        # Run agent on the state
-        action = mario.act(state)
+            # Run agent on the state
+            action = mario.act(state)
 
-        # Agent performs action
-        next_state, reward, done, trunc, info = env.step(action)
+            # Agent performs action
+            next_state, reward, done, trunc, info = env.step(action)
 
-        # Remember
-        mario.cache(state, next_state, action, reward, done)
+            # Remember
+            mario.cache(state, next_state, action, reward, done)
 
-        # Learn
-        q, loss = mario.learn()
+            # Learn
+            q, loss = mario.learn()
 
-        # Logging
-        logger.log_step(reward, loss, q)
+            # Logging
+            logger.log_step(reward, loss, q)
 
-        # Update state
-        state = next_state
+            # Update state
+            state = next_state
 
-        # Check if end of game
-        if done or info["flag_get"]:
-            break
+            # Check if end of game
+            if done or info["flag_get"]:
+                break
 
-    logger.log_episode()
+        logger.log_episode()
 
-    if e % 20 == 0:
-        logger.record(episode=e, epsilon=mario.exploration_rate, step=mario.curr_step)
+        if e % 20 == 0:
+            logger.record(episode=e, epsilon=mario.exploration_rate, step=mario.curr_step)

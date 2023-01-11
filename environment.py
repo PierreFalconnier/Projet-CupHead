@@ -5,15 +5,25 @@ import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 import os
-from torchvision.transforms import ToTensor, Resize, Grayscale, Compose
+from torchvision.transforms import ToTensor, Resize, Grayscale, Compose,CenterCrop, Normalize
 from torchvision.transforms.functional import crop
 import torch
+import sys
+import gc
 
 if os.name == 'nt':
     from mss.windows import MSS as mss
 else:
     from wmctrl import Window
     from mss.linux import MSS as mss
+
+def sizeof_fmt(num, suffix='B'):
+    ''' by Fred Cirera,  https://stackoverflow.com/a/1094933/1870254, modified'''
+    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f %s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f %s%s" % (num, 'Yi', suffix)
 
 
 # Maintenir une touche un certain temps
@@ -55,6 +65,7 @@ class CupHeadEnvironment(object):
         screen_height = 1080,
         resize_w=128,
         resize_h=128,
+        use_mobilenet= False,
         dim_state=2,
         controls_enabled = True,
         episode_time_limite = 180,
@@ -86,7 +97,7 @@ class CupHeadEnvironment(object):
         # pg.moveTo(x+w,y+h)
 
         # Get window position and size needed for screenshots
-        print('Cuphead window box(x,y,w,h) : ',x,y,w,h)
+        # print('Cuphead window box(x,y,w,h) : ',x,y,w,h)
         self.mon = {'top': max(0,y), 'left': max(0,x), 'width': min(screen_width-x,w), 'height': min(screen_height-y,h)} 
         self.mon_for_correlation = {'top': max(0,y)+ 7*h//8, 'left': max(0,x)+ 3*w//8, 'width': 2*w//8, 'height': h//8}   # /!\ A MODIFIER AVEC LA POSITION DE LA FENETRE à mettre comme arg du constructeur
         
@@ -173,15 +184,32 @@ class CupHeadEnvironment(object):
         # Transforms pour les states
         self.resize_w = resize_w
         self.resize_h = resize_h 
-        TR_ARRAY2TENSOR = ToTensor()
-        TR_COLOR2GRAY = Grayscale()                         # image en float entre 0 et 1, shape B H W
-        TR_RESIZE = Resize((self.resize_h,self.resize_w))
-        TR_LIST = [TR_ARRAY2TENSOR,TR_COLOR2GRAY,TR_RESIZE]
-        self.transform = Compose(TR_LIST)
 
+        self.use_mobilenet = use_mobilenet
+        if self.use_mobilenet:
+            self.resize_w = 224
+            self.resize_h = 224 
+            # MobileNet Transforms
+            self.transform = Compose([ToTensor(),
+            Grayscale(),
+            Resize(256),
+            CenterCrop(224),
+                    ])
+            self.normalise = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        else:
+            TR_ARRAY2TENSOR = ToTensor()
+            TR_COLOR2GRAY = Grayscale()                         # image en float entre 0 et 1, shape B H W
+            TR_RESIZE = Resize((self.resize_h,self.resize_w))
+            TR_LIST = [TR_ARRAY2TENSOR,TR_COLOR2GRAY,TR_RESIZE]
+            self.transform = Compose(TR_LIST)
+
+        
         # Variables des timing FPS et skip frame
         self.dim_state = dim_state
         self.episode_time_limite = episode_time_limite
+
+        if self.use_mobilenet and self.dim_state != 3:
+                    print('dim_state doit être = 3 pour utiliser mobilenet') ; exit()
 
         self.sleep_between_state_frames = 1/24  # le jeu est à 24 fps
 
@@ -357,6 +385,10 @@ class CupHeadEnvironment(object):
                 next_state[k] = self.transform(img_state.copy()) 
                 time.sleep(self.sleep_between_state_frames)  # 1/24 sec
             
+            # MobileNet
+            if self.use_mobilenet:
+                next_state = self.normalise(next_state)
+            
             # for k in range(self.dim_state):
             #     iprint(next_state[k])
 
@@ -398,6 +430,11 @@ class CupHeadEnvironment(object):
             act_thread.join()    # pour synchro / attendre le thread avant de terminer 
 
             # print(t - time.time())
+            # for name, size in sorted(((name, sys.getsizeof(value)) for name, value in locals().items()),
+            #                     key= lambda x: -x[1])[:10]:
+            #     print("{:>30}: {:>8}".format(name, sizeof_fmt(size)))
+            # print('')
+
             return next_state, self.reward, self.done
     
 

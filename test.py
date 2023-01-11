@@ -20,6 +20,22 @@ import numpy
 from PIL import Image
 import pprint
 
+from collections import deque
+
+from torch.utils.tensorboard import SummaryWriter
+import numpy as np
+
+
+writer = SummaryWriter("log_dir")
+
+for n_iter in range(100):
+    writer.add_scalar('Loss/train', np.random.random(), n_iter)
+    writer.add_scalar('Loss/test', np.random.random(), n_iter)
+    writer.add_scalar('Accuracy/train', np.random.random(), n_iter)
+    writer.add_scalar('Accuracy/test', np.random.random(), n_iter)
+
+exit()
+
 
 # print(torch.cuda.is_available())
 # print(torch.cuda.device_count())
@@ -29,6 +45,65 @@ import pprint
 
 
 if __name__=='__main__':
+
+    import torch
+    from torch import nn
+    model = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2', pretrained=True)
+    model.eval()
+    print(model)
+    print(model.classifier)
+
+    # from torchvision import models
+    # # print(dir(models))
+    # model =  models.mobilenetv2(pretrained=True)
+
+    # print(model.parameters())
+    for param in model.parameters():
+        param.requires_grad = False
+
+    input_dim = 1280
+    output_dim = 10
+    # my_fc = nn.Sequential(nn.Flatten(),
+    #         nn.Linear(input_dim, 512),
+    #         nn.ReLU(),
+    #         nn.Linear(512, output_dim),)
+
+    my_fc = nn.Sequential(nn.Linear(input_dim, 512),
+            nn.ReLU(),
+            nn.Linear(512, output_dim),)
+
+    model.classifier = my_fc
+
+    print(model)
+    print(model.classifier.parameters())  
+    opt = torch.optim.Adam(model.classifier.parameters(), lr=0.001)
+
+        
+    
+
+    from torchvision import transforms
+    preprocess = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+
+
+    exit()
+
+    # q = deque(maxlen=3)
+    # d = deque(maxlen=2)
+
+    # q.append(3)
+    # q.append(4)
+    # d.append(67)
+    # d.append(9)
+    # q.extend(d)
+    # print(q)
+    # exit()
+
     time.sleep(2)
     keys=["z","right"]
     timings = [0.5,1]
@@ -103,7 +178,7 @@ if __name__=='__main__':
 
     step = 50000
     proba = 0.5
-    rate = 0.9999
+    rate =  0.99999
     print("STEPS needed to reach proba : ",math.log(proba)/math.log(rate))
     print("Rate to reach proba after given step : ", proba**(1/step))
     exit()

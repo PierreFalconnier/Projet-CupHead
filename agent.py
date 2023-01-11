@@ -16,10 +16,12 @@ class CupHead(object):
         action_dim, 
         logging = False,
         save_dir='trash',
+        exploration_rate_init = 0.99999975,
         exploration_rate_decay=0.99999975,
         exploration_rate_min=0.1,
         batch_size=32,
         gamma=0.9,
+        use_mobilenet=True,
         burnin=1e2,
         learn_every=3,
         learning_rate = 0.001,
@@ -43,10 +45,11 @@ class CupHead(object):
         self.device = device
 
         # CupHead's DNN to predict the most optimal action
-        self.net = CupHeadNet(self.state_dim, self.action_dim).float()
+        self.use_mobilenet = use_mobilenet
+        self.net = CupHeadNet(self.state_dim, self.action_dim, self.use_mobilenet).float()
         self.net = self.net.to(device=self.device)
 
-        self.exploration_rate = 1
+        self.exploration_rate = exploration_rate_init
         self.exploration_rate_decay = exploration_rate_decay
         self.exploration_rate_min = exploration_rate_min
         self.curr_step = 0
@@ -56,7 +59,7 @@ class CupHead(object):
 
         ## cache() and recall()
 
-        self.memory = deque(maxlen=10000)    # mémoire occupée : 100 000 * 80 bytes = 7,629394531 MBytes < 16 Mbytes
+        self.memory = deque(maxlen=5000)    # mémoire occupée : 100 000 * 80 bytes = 7,629394531 MBytes < 16 Mbytes
         self.batch_size = batch_size
 
         ## td_estimate and td_target()
@@ -66,7 +69,11 @@ class CupHead(object):
         ## update_Q_online() and sync_Q_online
 
         self.learning_rate = learning_rate
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.learning_rate)
+        if self.net.use_mobilenet:
+            self.optimizer = torch.optim.Adam(self.net.online.classifier.parameters(), lr=self.learning_rate)  # mobilenet
+        else:
+            self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.learning_rate)  # Model perso
+
         self.loss_fn = torch.nn.SmoothL1Loss()
 
         ## learn()
@@ -96,8 +103,9 @@ class CupHead(object):
             state = state[0].__array__() if isinstance(state, tuple) else state.__array__()
             state = torch.tensor(state, device=self.device).unsqueeze(0)
             # state = torch.tensor(state, device="cpu").unsqueeze(0)
-            action_values = self.net(state, model="online")
-            action_idx = torch.argmax(action_values, axis=1).item()
+            with torch.no_grad():
+                action_values = self.net(state, model="online")
+                action_idx = torch.argmax(action_values, axis=1).item()
 
         # decrease exploration_rate
         self.exploration_rate *= self.exploration_rate_decay
@@ -149,19 +157,35 @@ class CupHead(object):
         state, next_state, action, reward, done = map(torch.stack, zip(*batch))
         return state, next_state, action.squeeze(), reward.squeeze(), done.squeeze()
     
-    def td_estimate(self, state, action):
-        current_Q = self.net(state, model="online")[
+    # def td_estimate(self, state, action):
+    #     current_Q = self.net(state, model="online")[
+    #         np.arange(0, self.batch_size), action
+    #     ]  # Q_online(s,a)
+    #     return current_Q
+
+    # @torch.no_grad()
+    # def td_target(self, reward, next_state, done):
+    #     next_state_Q = self.net(next_state, model="online")
+    #     best_action = torch.argmax(next_state_Q, axis=1)
+    #     next_Q = self.net(next_state, model="target")[
+    #         np.arange(0, self.batch_size), best_action
+    #     ]
+    #     return (reward + (1 - done.float()) * self.gamma * next_Q).float()
+
+    def td_estimate(self, state, action, model='online'):
+        current_Q = self.net(state, model=model)[
             np.arange(0, self.batch_size), action
         ]  # Q_online(s,a)
         return current_Q
 
     @torch.no_grad()
-    def td_target(self, reward, next_state, done):
-        next_state_Q = self.net(next_state, model="online")
+    def td_target(self, reward, next_state, done, first_model='online',second_model='target'):
+        next_state_Q = self.net(next_state, model=first_model)
         best_action = torch.argmax(next_state_Q, axis=1)
-        next_Q = self.net(next_state, model="target")[
-            np.arange(0, self.batch_size), best_action
-        ]
+        with torch.no_grad():
+            next_Q = self.net(next_state, model=second_model)[
+                np.arange(0, self.batch_size), best_action
+            ]
         return (reward + (1 - done.float()) * self.gamma * next_Q).float()
     
     def update_Q_online(self, td_estimate, td_target):
@@ -198,9 +222,13 @@ class CupHead(object):
 
             if self.curr_step % self.learn_every != 0:
                 return None, None
+
+            print('APPRENTISSAGE DURANT EPISODE A ETE DESACTIVE, exit') ; exit()
         else:
-            if self.curr_ep % self.sync_every == 0:
-                self.sync_Q_target()
+            pass
+
+            # if self.curr_ep % self.sync_every == 0:
+            #     self.sync_Q_target()
 
             # if self.curr_ep % self.save_every == 0:
             #     self.save()
@@ -229,5 +257,25 @@ class CupHead(object):
 
         # Backpropagate loss through Q_online
         loss = self.update_Q_online(td_est, td_tgt)
+
+        #Second model (double Q learning)
+
+        state, next_state, action, reward, done = self.recall()
+        if self.device != "cpu" :
+            # print(f"Transfer : memory to {self.device}")
+            state=state.to(device=self.device)
+            next_state=next_state.to(device=self.device)
+            action=action.to(device=self.device)
+            reward=reward.to(device=self.device)
+            done=done.to(device=self.device)
+
+        # Get TD Estimate
+        td_est_2 = self.td_estimate(state, action, model='target')
+
+        # Get TD Target
+        td_tgt_2 = self.td_target(reward, next_state, done, first_model='target', second_model='online')
+
+        # Backpropagate loss through Q_online
+        loss = self.update_Q_online(td_est_2, td_tgt_2)
 
         return (td_est.mean().item(), loss)

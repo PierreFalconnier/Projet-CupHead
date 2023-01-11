@@ -12,132 +12,112 @@ import os, sys
 from pprint import pprint 
 from tqdm import tqdm
 from glob import glob
+from collections import deque
 import threading
+import psutil
+import gc
+from pympler import asizeof
+from torch.utils.tensorboard import SummaryWriter
+
 
 pg.PAUSE = 0
 
+#---- BOOLEANS 
+
 CONTROLS_ENABLED     = True                    # Mettre False pour des tests sans utiliser le jeu
 CONSTANT_SHOOTING    = True
-TRAINING             = True                    # Entrainer ou inference
-TRAINING_AND_PLAYING = TRAINING and True
-TRAINING_ON_MEMORY   = TRAINING and not(TRAINING_AND_PLAYING)
-RESUME_CHECKPOINT    = TRAINING and True      # Reprendre un entrainement
-LOGGING              = TRAINING and True       # Logger pendant entrainement 
-dict_bool = {'TRAINING':TRAINING ,'TRAINING_AND_PLAYING':TRAINING_AND_PLAYING,'TRAINING_ON_MEMORY':TRAINING_ON_MEMORY,'RESUME_CHECKPOINT':RESUME_CHECKPOINT,'LOGGING':LOGGING,'CONTROLS_ENABLED':CONTROLS_ENABLED, 'CONSTANT_SHOOTING':CONSTANT_SHOOTING}
-pprint(dict_bool) 
+TRAINING_AND_PLAYING = True
+LEARN_DURING_EPISODE = False                # Si False, learn entre les épisodes -> pas de ralentissements de cuphead 
+TRAINING_ON_MEMORY   = not(TRAINING_AND_PLAYING)
+RESUME_CHECKPOINT    = True      # Reprendre un entrainement
+LOAD_MEMORY          = False
+LOGGING              = True       # Logger pendant entrainement 
 
-save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-CHECKPOINT_PATH = Path("checkpoints") / "2022-12-22T20-30-45"
+
+#---- PATHS
+
+# save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+# CHECKPOINT_PATH = Path("checkpoints/2022-12-26T23-04-01")
+
+save_dir = Path("checkpoints") / "test_pierre"
+CHECKPOINT_PATH = save_dir
 
 # l = glob('checkpoints/*')
 # l.sort()
 # CHECKPOINT_PATH = Path(l[-1])
-print('CHECKPOINT_PATH : ',CHECKPOINT_PATH)
+# print('CHECKPOINT_PATH : ',CHECKPOINT_PATH) ; time.sleep(2)
 
-if TRAINING:
-    # logging
-    if LOGGING:
-        save_dir.mkdir(parents=True)
-        logger = MetricLogger(save_dir)
-    # env
-    # MODIFIER les controls du jeu si conflie avec les touches pour naviguer dans le menu, sinon bugs
-    ACTION_LIST  = [["r"],["r"],["l"],["l"],["a"],["a","r"],["r","d"],["a","l"],["l","d"],["s"]]   # s correspond à 'still', cuphead ne fait rien
-    HOLD_TIMINGS = [0.1,   0.6,  0.6,  0.1,  0.1,    0.4  ,  0.1,        0.4   , 0.1,     0.2]
-    # ACTION_LIST  = [["r"],["a","r"],["d"]]   # "a" sauter, "r" droite, "l" gauche, "d" dash, "s" ne rien faire
-    # HOLD_TIMINGS = [0.6,           0.4,      0.6]
-    FORWARD_ACTION_INDEX_LIST = [0,1,5,6]
-    BACKWARD_ACTION_INDEX_LIST = [2,3,7,8]
-    SCREEN_WIDTH, SCREEN_HEIGHT = pg.size() 
-    RESIZE_H = 256
-    RESIZE_W = 256
-    DIM_STATE = 3
-    EPISODE_TIME_LIMITE = 180
-    REWARD_DICT = {
-        'Health_point_lost': -20,
-        'GameWin' :          100,
-        'GameOver' :         -20,
-        'Forward':           0.1,
-        'Backward':         -0.1,
-        }
-    # agent
-    # EXPLORATION_RATE_DECAY = 0.999986137152479   # 0.5 proba reached after 50 000 steps
-    EXPLORATION_RATE_DECAY = 0.9999   # 0.5 proba reached after 50 000 steps
-    EXPLORATION_RATE_MIN = 0.1
-    BATCH_SIZE = 32
-    GAMMA = 0.9
-    LEARN_DURING_EPISODE = False                # Si False, learn entre les épisodes -> pas de ralentissements de cuphead 
-    BURNIN = 5  # min. eps or steps before training
-    LEARN_EVERY = 1  # no. of eps or steps between updates to Q_online. 1 = every episodes
-    SYNC_EVERY = 10  # no. of eps or steps between Q_target & Q_online sync
-    LEARNING_RATE = 0.001
-    DEVICE = "cpu"       
-    # DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # device used for training
-    # Save config
-    dict_config = {
-        'ACTION_LIST' : ACTION_LIST,   
-        'HOLD_TIMINGS'  : HOLD_TIMINGS,
-        'FORWARD_ACTION_INDEX_LIST' : FORWARD_ACTION_INDEX_LIST,
-        'BACKWARD_ACTION_INDEX_LIST': BACKWARD_ACTION_INDEX_LIST,
-        'SCREEN_WIDTH': SCREEN_WIDTH,
-        'SCREEN_HEIGHT' : SCREEN_HEIGHT,
-        'RESIZE_H' : RESIZE_H,
-        'RESIZE_W' : RESIZE_W,
-        'DIM_STATE' : DIM_STATE,
-        'CONTROLS_ENABLED' : CONTROLS_ENABLED,  
-        'EPISODE_TIME_LIMITE' : EPISODE_TIME_LIMITE,
-        'REWARD_DICT' : REWARD_DICT,
-        'EXPLORATION_RATE_DECAY' : EXPLORATION_RATE_DECAY,   
-        'EXPLORATION_RATE_MIN' :EXPLORATION_RATE_MIN,
-        'BATCH_SIZE' : BATCH_SIZE,
-        'GAMMA' : GAMMA,
-        'LEARN_DURING_EPISODE' : LEARN_DURING_EPISODE,
-        'BURNIN' : BURNIN ,
-        'LEARN_EVERY' : LEARN_EVERY ,
-        'SYNC_EVERY' : SYNC_EVERY  ,
-        'LEARNING_RATE' : LEARNING_RATE,
-        'DEVICE' : DEVICE,
+#---- HYPER PARAMETERS 
+
+# logging
+if LOGGING:
+    save_dir.mkdir(parents=True, exist_ok=True)
+    # logger = MetricLogger(save_dir)
+    writer = SummaryWriter(save_dir/"log_dir")
+
+# env
+ACTION_LIST  = [["r"],["r"],["l"],["l"],["a"],["a","r"],["r","d"],["a","l"],["l","d"]]   # s correspond à 'still', cuphead ne fait rien
+HOLD_TIMINGS = [0.1,   0.6,  0.6,  0.1,  0.1,    0.4  ,  0.1,        0.4   , 0.1,    ]
+FORWARD_ACTION_INDEX_LIST = [0,1,5,6]
+BACKWARD_ACTION_INDEX_LIST = [2,3,7,8]
+SCREEN_WIDTH, SCREEN_HEIGHT = pg.size() 
+RESIZE_H = 256
+RESIZE_W = 256
+DIM_STATE = 3                   # correspond en fait à la dim du stack
+EPISODE_TIME_LIMITE = 180
+REWARD_DICT = {
+    'Health_point_lost': -50,
+    'GameWin' :          100,
+    'GameOver' :         -50,
+    'Forward':           1,
+    'Backward':         -1,
     }
-    if LOGGING : torch.save(dict_config, save_dir / 'dict_config.pt')
+# agent
+if Path.exists(CHECKPOINT_PATH / 'epsilon.pt' ):
+    print('Loading epsilon')
+    EXPLORATION_RATE_INIT = torch.load(CHECKPOINT_PATH / 'epsilon.pt')
+else:
+    EXPLORATION_RATE_INIT = 0.99
+EXPLORATION_RATE_DECAY = 0.99999
+EXPLORATION_RATE_MIN = 0.1
+BATCH_SIZE = 32
+GAMMA = 0.9
+USE_MOBILENET = True
+BURNIN = 0  # min. eps or steps before training
+LEARN_EVERY = 1  # no. of eps or steps between updates to Q_online. 1 = every episodes
+SYNC_EVERY = 2  # no. of eps or steps between Q_target & Q_online sync
+LEARNING_RATE = 0.00025
+DEVICE = "cpu"       # attention, pour les tensors, par pour le model ni entrainement
+# DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # device used for training
 
 
-else:   # INFERENCE
-    # Load config dictionary
-    dict_config = torch.load(os.path.join(CHECKPOINT_PATH /'dict_config.pt'))
-    print("Config loaded :")
-    pprint(dict_config)
-    # env
-    ACTION_LIST = dict_config['ACTION_LIST']    
-    HOLD_TIMINGS = dict_config['HOLD_TIMINGS'] 
-    FORWARD_ACTION_INDEX_LIST = dict_config['FORWARD_ACTION_INDEX_LIST']
-    BACKWARD_ACTION_INDEX_LIST = dict_config['BACKWARD_ACTION_INDEX_LIST']
-    SCREEN_WIDTH = dict_config['SCREEN_WIDTH'] 
-    SCREEN_HEIGHT = dict_config['SCREEN_HEIGHT'] 
-    RESIZE_H = dict_config['RESIZE_H']  
-    RESIZE_W = dict_config['RESIZE_W']  
-    DIM_STATE = dict_config['DIM_STATE'] 
-    CONTROLS_ENABLED = dict_config['CONTROLS_ENABLED'] 
-    EPISODE_TIME_LIMITE = dict_config['EPISODE_TIME_LIMITE'] 
-    REWARD_DICT = dict_config['REWARD_DICT']  
-    # agent
-    EXPLORATION_RATE_DECAY = 0
-    EXPLORATION_RATE_MIN = 0
-    BATCH_SIZE = dict_config['BATCH_SIZE'] 
-    GAMMA = dict_config['GAMMA']  
-    BURNIN = dict_config['BURNIN']   
-    LEARN_EVERY = dict_config['LEARN_EVERY']
-    SYNC_EVERY = dict_config['SYNC_EVERY']
-    LEARNING_RATE = dict_config['LEARNING_RATE'] 
-    DEVICE = dict_config['DEVICE']
-    LEARN_DURING_EPISODE = dict_config['LEARN_DURING_EPISODE']
-    # DEVICE = device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#---- AGENT
+cuphead = CupHead(
+    state_dim=(DIM_STATE, RESIZE_H, RESIZE_W), 
+    action_dim=len(ACTION_LIST), 
+    logging=LOGGING,
+    save_dir=save_dir,
+    exploration_rate_init=EXPLORATION_RATE_INIT,
+    exploration_rate_decay= EXPLORATION_RATE_DECAY,
+    exploration_rate_min=EXPLORATION_RATE_MIN,
+    burnin=BURNIN,
+    learning_rate=LEARNING_RATE,
+    device=DEVICE,
+    learn_during_episode=LEARN_DURING_EPISODE,
+    use_mobilenet=USE_MOBILENET,
+    gamma=GAMMA,
+    batch_size=BATCH_SIZE,
+    sync_every=SYNC_EVERY
+    )
 
-# ENVIRONMENT 
+#---- ENVIRONMENT 
 if not(TRAINING_ON_MEMORY):
     env = CupHeadEnvironment(
         screen_width=SCREEN_WIDTH,
         screen_height=SCREEN_HEIGHT,
         resize_h=RESIZE_H,
         resize_w=RESIZE_W,
+        use_mobilenet = USE_MOBILENET,
         dim_state=DIM_STATE,
         controls_enabled=CONTROLS_ENABLED,
         episode_time_limite=EPISODE_TIME_LIMITE,
@@ -148,52 +128,50 @@ if not(TRAINING_ON_MEMORY):
         backward_action_index_list=BACKWARD_ACTION_INDEX_LIST,
         )
 
-# AGENT
-cuphead = CupHead(
-    state_dim=(env.dim_state, env.resize_h, 
-    env.resize_w), 
-    action_dim=env.actions_dim, 
-    logging=LOGGING,
-    save_dir=save_dir,
-    exploration_rate_decay= EXPLORATION_RATE_DECAY,
-    burnin=BURNIN,
-    learning_rate=LEARNING_RATE,
-    device=DEVICE,
-    learn_during_episode=LEARN_DURING_EPISODE,
-    )
+
+#--- LOAD VARIABLES
 
 # Load model
-if not(TRAINING) or RESUME_CHECKPOINT:
-    STAT_DICT_MODEL_PATH = CHECKPOINT_PATH / 'model_cuphead_stat_dict.pt' 
-    cuphead.net.load_state_dict(torch.load(STAT_DICT_MODEL_PATH))
+if RESUME_CHECKPOINT:
+    STAT_DICT_MODEL_PATH = CHECKPOINT_PATH / 'model_stat_dict.pt' 
+    if Path.exists(STAT_DICT_MODEL_PATH):
+        # print('Loading model')
+        cuphead.net.load_state_dict(torch.load(STAT_DICT_MODEL_PATH))
 
 # Load memory
-# cuphead.memory = torch.load(CHECKPOINT_PATH / 'cuphead_memory.pt' )
-# print(len(cuphead.memory)) ; exit()
+if LOAD_MEMORY and Path.exists(CHECKPOINT_PATH / 'memory.pt' ):
+    # print('Loading memory')
+    cuphead.memory = torch.load(CHECKPOINT_PATH / 'memory.pt' )
 
-# Start
-episodes = 10000
+# Load episode
+if not(LEARN_DURING_EPISODE) and Path.exists(CHECKPOINT_PATH / 'episode.pt' ):
+    # print('Loading episode')
+    episode = torch.load(CHECKPOINT_PATH / 'episode.pt' )
+
+if not(LEARN_DURING_EPISODE) and not(Path.exists(CHECKPOINT_PATH / 'episode.pt' )):
+    episode = 0
+
+# Load epsilon
+if not(LEARN_DURING_EPISODE) and Path.exists(CHECKPOINT_PATH / 'epsilon.pt' ):
+    # print('Loading epsilon')
+    epsilon = torch.load(CHECKPOINT_PATH / 'epsilon.pt' )
+    cuphead.exploration_rate = epsilon
+
+
+#---- START
+episodes = 1
 previous_loss = None
 
 if CONTROLS_ENABLED:
     if os.name == 'nt':
         print("WINDOWS")
-        # import pygetwindow as gw
-        # window = gw.getWindowsWithTitle('Cuphead')[-1]
-        # window.restore()
-        print("Go on the game...")
-        time.sleep(5)
     else:
         print("LINUX")
       
-if TRAINING : 
-    print("Training time !")
-else:
-    print("Playing time !")
-
+print("Training time !")
 if not CONTROLS_ENABLED : print("CONTROLS DISABLED")
 
-if TRAINING_AND_PLAYING or TRAINING==False:     # Si apprentissage avec jeu ou inférence
+if TRAINING_AND_PLAYING :     # Si apprentissage avec jeu ou inférence
     for e in range(episodes):
 
         if CONTROLS_ENABLED and CONSTANT_SHOOTING :
@@ -207,16 +185,12 @@ if TRAINING_AND_PLAYING or TRAINING==False:     # Si apprentissage avec jeu ou i
         if CONTROLS_ENABLED and CONSTANT_SHOOTING:
             pg.keyDown('x')
 
-        # Play the game!
-        # pg.press('enter')
-        
         print('New episode')
         pg.keyDown('enter')
         time.sleep(0.1)
         pg.keyUp('enter')
-        while True:  
 
-            
+        while True:  
             # start = time.time()
 
             # Run agent on the state
@@ -226,11 +200,7 @@ if TRAINING_AND_PLAYING or TRAINING==False:     # Si apprentissage avec jeu ou i
             next_state, reward, done = env.step(action_idx, temps=temps)
             
             # Remember
-            if TRAINING:
-                # cache_thread = threading.Thread(target=cuphead.cache, args=[state, next_state, action_idx, reward, done])    # parallélisation de l'action
-                # cache_thread.start()
-                cuphead.cache(state, next_state, action_idx, reward, done)   # 80 bytes
-                # cache_thread.join()
+            cuphead.cache(state, next_state, action_idx, reward, done)
             # Update state
             state = next_state
 
@@ -239,36 +209,67 @@ if TRAINING_AND_PLAYING or TRAINING==False:     # Si apprentissage avec jeu ou i
                 q, loss = cuphead.learn()
 
                 if LOGGING :
-                        logger.log_step(reward, q, reward)
+                        pass  # à faire 
 
-
-            # # Vérifications en direct
-            # print("------------")
-            # # print(f'Step {cuphead.curr_step} - q {q} - Loss {loss}')
-            # # print(f'Action {env.actions_list[action_idx]} - Reward {reward}')
-
-            if TRAINING and LOGGING and LEARN_DURING_EPISODE == False   : 
+            # Liste rewards
+            if LOGGING and LEARN_DURING_EPISODE == False   : 
                 reward_list.append(reward)
 
             # Check if end of episode
             if done:
             
-                if TRAINING and LEARN_DURING_EPISODE == False   : # learn between episodes
-                    loss = None
-                    loss_list = []
+                if LEARN_DURING_EPISODE:
                     cuphead.curr_ep = e
-                    cuphead.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # device used for training
-                    cuphead.net.to(device=cuphead.device)
-                    if e >= BURNIN:
+                    break
+                else:
+                    loss,q = None, None
+                    loss_list = []
+                    q_list = []
+
+                    cuphead.curr_ep = episode
+
+                    if os.path.exists(save_dir / 'memory.pt' ):
+                            print("Loading old memories...")
+                            old_memory = torch.load(save_dir / 'memory.pt' ) 
+                            old_memory.extend(cuphead.memory)
+                            cuphead.memory = old_memory
+
+                    if episode >= BURNIN:
+
+                        cuphead.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # device used for training
+                        cuphead.net.to(device=cuphead.device)
+                        cuphead.net.train()
+
                         print('Learning...')
-                        for _ in tqdm(range(min(len(cuphead.memory),2000))):
+                        for _ in tqdm(range(min(len(cuphead.memory),200))):
                             q, loss = cuphead.learn()
                             loss_list.append(loss)
-                    if len(loss_list): loss = sum(loss_list)/len(loss_list)
+                            q_list.append(q)
+
                     cuphead.device = "cpu"
+                    cuphead.net.eval()
                     cuphead.net.to(device=cuphead.device)
-                    if LOGGING : reward_mean = sum(reward_list)/len(reward_list)
-            
+                    
+                    if LOGGING : 
+                        if len(loss_list) and len(q_list): 
+                            loss = sum(loss_list)/len(loss_list)
+                            q = sum(q_list)/len(q_list)
+                            writer.add_scalar('loss', loss, episode)
+                            writer.add_scalar('q', q, episode)
+                        reward_mean = sum(reward_list)/len(reward_list)
+                        writer.add_scalar('mean_reward', reward_mean, episode)
+                        writer.add_scalar('epsilon', cuphead.exploration_rate, episode)
+                        writer.add_scalar('progress', env.last_progress, episode)
+
+                    print('Saving Cuphead memory...')
+                    torch.save(cuphead.memory, save_dir / 'memory.pt' )
+                  
+                    cuphead.memory = deque(maxlen=5000)
+
+                    print(f"Episode {episode} - Mean reward {reward_mean} - Mean Loss {loss} - Mean q {q} - Epsilon {cuphead.exploration_rate}")
+
+
+
                 break
             
             # print(time.time()-start)
@@ -277,27 +278,25 @@ if TRAINING_AND_PLAYING or TRAINING==False:     # Si apprentissage avec jeu ou i
             
 
         # Loggings
-        if TRAINING: 
-            if LEARN_DURING_EPISODE and LOGGING : 
-                logger.log_episode(env.last_progress)
-                if e % 1 == 0 and LOGGING:
-                    # print(f"Logging episode {e}")
-                    logger.record(episode=e, epsilon=cuphead.exploration_rate, step=cuphead.curr_step, progress= env.last_progress)
-                logger.init_episode()
-            else:
-                # print(f"Logging episode {e}")
-                logger.record_2(episode=e, epsilon=cuphead.exploration_rate, step=cuphead.curr_step,  progress = env.last_progress, loss = loss, reward_mean=reward_mean)
-                logger.init_episode()
+         
+        if LEARN_DURING_EPISODE and LOGGING : 
+            pass  # a faire
+        else:
+            # logger.record_2(episode=e, epsilon=cuphead.exploration_rate, step=cuphead.curr_step,  progress = env.last_progress, loss = loss, reward_mean=reward_mean)
+            # logger.init_episode()
 
-            if loss and previous_loss and loss<previous_loss :                                      # sauve que si amélioration
-                torch.save(cuphead.net.state_dict(), os.path.join(save_dir,'model_cuphead_stat_dict.pt'))
-            if loss:
-                previous_loss = loss
-            
-            if e % 20 == 0 :
-                print('Saving Cuphead memory...')
-                torch.save(cuphead.memory,os.path.join(save_dir,'cuphead_memory.pt'))
-                print('Done')
+            # Saving useful variables : model, episode, epsilon
+            episode = episode +1 
+            torch.save(cuphead.net.state_dict(), save_dir /'model_stat_dict.pt')
+            torch.save(cuphead.exploration_rate, save_dir / 'epsilon.pt')
+            torch.save(episode, save_dir / 'episode.pt')
+
+
+        # if loss and previous_loss and loss<previous_loss :                                      # sauve que si amélioration
+        #     torch.save(cuphead.net.state_dict(), os.path.join(save_dir,'model_stat_dict.pt'))
+        # if loss:
+        #     previous_loss = loss
+      
 
 elif TRAINING_ON_MEMORY:
     # CHECKPOINT_PATH = 
