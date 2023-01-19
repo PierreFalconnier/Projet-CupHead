@@ -28,6 +28,8 @@ class CupHead(object):
         sync_every=1e2,
         device = "cuda",
         learn_during_episode = False,
+        max_memory_len = 50000,
+        double_q_learning=False,
         ):
 
         ## act()
@@ -46,7 +48,8 @@ class CupHead(object):
 
         # CupHead's DNN to predict the most optimal action
         self.use_mobilenet = use_mobilenet
-        self.net = CupHeadNet(self.state_dim, self.action_dim, self.use_mobilenet).float()
+        self.double_q_learning = double_q_learning
+        self.net = CupHeadNet(self.state_dim, self.action_dim, self.use_mobilenet, double_q_learning).float()
         self.net = self.net.to(device=self.device)
 
         self.exploration_rate = exploration_rate_init
@@ -58,8 +61,8 @@ class CupHead(object):
         self.save_every = 100  # no. of experiences between saving Cuphead Net
 
         ## cache() and recall()
-
-        self.memory = deque(maxlen=5000)    # mémoire occupée : 100 000 * 80 bytes = 7,629394531 MBytes < 16 Mbytes
+        self.max_memory_len = max_memory_len
+        self.memory = deque(maxlen=max_memory_len)    # mémoire occupée : 100 000 * 80 bytes = 7,629394531 MBytes < 16 Mbytes
         self.batch_size = batch_size
 
         ## td_estimate and td_target()
@@ -225,57 +228,67 @@ class CupHead(object):
 
             print('APPRENTISSAGE DURANT EPISODE A ETE DESACTIVE, exit') ; exit()
         else:
-            pass
-
-            # if self.curr_ep % self.sync_every == 0:
-            #     self.sync_Q_target()
-
-            # if self.curr_ep % self.save_every == 0:
-            #     self.save()
-            # if self.curr_ep < self.burnin:
-            #     return None, None
-            # if self.curr_ep % self.learn_every != 0:
-            #     return None, None
-
-        # Sample from memory
         
+            if self.double_q_learning:
 
-        state, next_state, action, reward, done = self.recall()
-        if self.device != "cpu" :
-            # print(f"Transfer : memory to {self.device}")
-            state=state.to(device=self.device)
-            next_state=next_state.to(device=self.device)
-            action=action.to(device=self.device)
-            reward=reward.to(device=self.device)
-            done=done.to(device=self.device)
+                state, next_state, action, reward, done = self.recall()
+                if self.device != "cpu" :
+                    # print(f"Transfer : memory to {self.device}")
+                    state=state.to(device=self.device)
+                    next_state=next_state.to(device=self.device)
+                    action=action.to(device=self.device)
+                    reward=reward.to(device=self.device)
+                    done=done.to(device=self.device)
 
-        # Get TD Estimate
-        td_est = self.td_estimate(state, action)
+                # Get TD Estimate
+                td_est = self.td_estimate(state, action)
 
-        # Get TD Target
-        td_tgt = self.td_target(reward, next_state, done)
+                # Get TD Target
+                td_tgt = self.td_target(reward, next_state, done)
 
-        # Backpropagate loss through Q_online
-        loss = self.update_Q_online(td_est, td_tgt)
+                # Backpropagate loss through Q_online
+                loss = self.update_Q_online(td_est, td_tgt)
 
-        #Second model (double Q learning)
+                #Second model (double Q learning)
 
-        state, next_state, action, reward, done = self.recall()
-        if self.device != "cpu" :
-            # print(f"Transfer : memory to {self.device}")
-            state=state.to(device=self.device)
-            next_state=next_state.to(device=self.device)
-            action=action.to(device=self.device)
-            reward=reward.to(device=self.device)
-            done=done.to(device=self.device)
+                state, next_state, action, reward, done = self.recall()
+                if self.device != "cpu" :
+                    # print(f"Transfer : memory to {self.device}")
+                    state=state.to(device=self.device)
+                    next_state=next_state.to(device=self.device)
+                    action=action.to(device=self.device)
+                    reward=reward.to(device=self.device)
+                    done=done.to(device=self.device)
 
-        # Get TD Estimate
-        td_est_2 = self.td_estimate(state, action, model='target')
+                # Get TD Estimate
+                td_est_2 = self.td_estimate(state, action, model='target')
 
-        # Get TD Target
-        td_tgt_2 = self.td_target(reward, next_state, done, first_model='target', second_model='online')
+                # Get TD Target
+                td_tgt_2 = self.td_target(reward, next_state, done, first_model='target', second_model='online')
 
-        # Backpropagate loss through Q_online
-        loss = self.update_Q_online(td_est_2, td_tgt_2)
+                # Backpropagate loss through Q_online
+                loss = self.update_Q_online(td_est_2, td_tgt_2)
 
-        return (td_est.mean().item(), loss)
+                return (td_est.mean().item(), loss)
+
+            else:
+
+                state, next_state, action, reward, done = self.recall()
+                if self.device != "cpu" :
+                    # print(f"Transfer : memory to {self.device}")
+                    state=state.to(device=self.device)
+                    next_state=next_state.to(device=self.device)
+                    action=action.to(device=self.device)
+                    reward=reward.to(device=self.device)
+                    done=done.to(device=self.device)
+
+                # Get TD Estimate
+                td_est = self.td_estimate(state, action)
+
+                # Get TD Target
+                td_tgt = self.td_target(reward, next_state, done)
+
+                # Backpropagate loss through Q_online
+                loss = self.update_Q_online(td_est, td_tgt)
+
+                return (td_est.mean().item(), loss)

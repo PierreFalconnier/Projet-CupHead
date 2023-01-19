@@ -9,10 +9,11 @@ class CupHeadNet(nn.Module):
   input -> (conv2d + relu) x 3 -> flatten -> (dense + relu) x 2 -> output
   """
 
-    def __init__(self, input_dim, output_dim, use_mobilenet):
+    def __init__(self, input_dim, output_dim, use_mobilenet, double_q_learning=False):
         super().__init__()
         self.c, self.h, self.w = input_dim
         self.use_mobilenet = use_mobilenet
+        self.double_q_learning = double_q_learning
 
         # if self.h != 84:
         #     raise ValueError(f"Expecting input height: 84, got: {self.h}")
@@ -73,10 +74,11 @@ class CupHeadNet(nn.Module):
 
         # Target
         self.target = copy.deepcopy(self.online)
-
-        # # Q_target parameters are frozen.
-        # for p in self.target.parameters():
-        #     p.requires_grad = False
+        
+        if double_q_learning== False:
+        # Q_target parameters are frozen.
+            for p in self.target.parameters():
+                p.requires_grad = False
 
     def forward(self, input, model):
         if model == "online":

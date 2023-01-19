@@ -25,12 +25,13 @@ LOGGING = True
 RESUME_CHECKPOINT = True
 LOAD_MEMORY = False
 LEARN_DURING_EPISODE = False                # Si False, learn entre les épisodes -> pas de ralentissements de cuphead 
+MEMORY_ON_HARD_DISK = False
 
 #---- PATHS
 
 # save_dir = Path("generic") / "checkpoints" / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
 
-save_dir = Path("generic") / "checkpoints" / "test_3"
+save_dir = Path("generic") / "checkpoints" / "test_classique_q_learning"
 CHECKPOINT_PATH = save_dir
 if LOGGING:
     writer = SummaryWriter(save_dir/"log_dir")
@@ -53,16 +54,17 @@ RESIZE_W = 84
 DIM_STACK = 3
 # agent
 EXPLORATION_RATE_INIT = 1
-EXPLORATION_RATE_DECAY = 0.99999
+EXPLORATION_RATE_DECAY = 0.99999975
 EXPLORATION_RATE_MIN = 0.1
 BATCH_SIZE = 32
 GAMMA = 0.9
-BURNIN = 300  # min. eps or steps (if learn while playing) before training
+BURNIN = 2e2  # min. eps or steps (if learn while playing) before training
 LEARN_EVERY = 3  # if learn while playing, no. of steps between updates to Q_online. 1 = every episodes
-SYNC_EVERY = 1000  # no. of eps or steps (if learn while playing) between Q_target & Q_online sync
+SYNC_EVERY = 5e2  # no. of eps or steps (if learn while playing) between Q_target & Q_online sync
 LEARNING_RATE = 0.00025
 DEVICE = "cpu"       # attention, pour les tensors, par pour le model ni entrainement
 
+DOUBLE_Q_LEARNING = False
 
 #---- ENVIRONMENT AND TRANSFORMS
 
@@ -78,11 +80,12 @@ from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
 
 # Initialize Super Mario environment (in v0.26 change render mode to 'human' to see results on the screen)
+# Initialize Super Mario environment (in v0.26 change render mode to 'human' to see results on the screen)
 if gym.__version__ < '0.26':
     env = gym_super_mario_bros.make("SuperMarioBros-1-1-v0", new_step_api=True)
 else:
     env = gym_super_mario_bros.make("SuperMarioBros-1-1-v0", render_mode='rgb', apply_api_compatibility=True)
-    # env = gym_super_mario_bros.make("SuperMarioBros-1-1-v0", render_mode='human', apply_api_compatibility=True)
+    env = gym_super_mario_bros.make("SuperMarioBros-1-1-v0", render_mode='human', apply_api_compatibility=True)
 
 # Limit the action-space to : walk right, jump right
 env = JoypadSpace(env, [["right"], ["right", "A"]])
@@ -117,6 +120,8 @@ mario = Mario(
     batch_size=BATCH_SIZE,
     sync_every=SYNC_EVERY,
     learn_during_episode = LEARN_DURING_EPISODE,
+    memory_max_len=50000,
+    double_q_learning=DOUBLE_Q_LEARNING,
     )
 
 # print('Agent : ')
@@ -154,13 +159,14 @@ if not(LEARN_DURING_EPISODE) and Path.exists(CHECKPOINT_PATH / 'epsilon.pt' ):
 
 
 #---- START
-
+previous_loss = None
 if LEARN_DURING_EPISODE == False:
-    episodes_in_one_run = 1
+    episodes_in_one_run = 50000
 else:
     episodes_in_one_run = 50000
 
 # for e in tqdm(range(episodes_in_one_run)):
+
 for e in tqdm(range(episodes_in_one_run)):
 
     reward_list = []
@@ -207,7 +213,8 @@ for e in tqdm(range(episodes_in_one_run)):
                 loss_list = []
                 q_list = []
 
-                if os.path.exists(save_dir / 'memory.pt' ):
+
+                if MEMORY_ON_HARD_DISK and os.path.exists(save_dir / 'memory.pt' ) :
                         print("Loading old memory...")
                         old_memory = torch.load(save_dir / 'memory.pt' ) 
                         old_memory.extend(mario.memory)
@@ -221,7 +228,7 @@ for e in tqdm(range(episodes_in_one_run)):
                     mario.net.train()
 
                     print('Learning...')
-                    for _ in tqdm(range(min(len(mario.memory),200))):
+                    for _ in tqdm(range(100)):
                         q, loss = mario.learn()
                         loss_list.append(loss)
                         q_list.append(q)
@@ -240,27 +247,35 @@ for e in tqdm(range(episodes_in_one_run)):
                     writer.add_scalar('mean_reward', reward_mean, episode)
                     writer.add_scalar('epsilon', mario.exploration_rate, episode)
 
+                if MEMORY_ON_HARD_DISK:
+                    print('Saving memory...')
+                    torch.save(mario.memory, save_dir / 'memory.pt' )
+                    memory_length = len(mario.memory)
+                    mario.memory = deque(maxlen=mario.memory_max_len)
+                else:
+                    memory_length = len(mario.memory)
 
-                print('Saving memory...')
-                torch.save(mario.memory, save_dir / 'memory.pt' )
-                mario.memory = deque(maxlen=5000)
 
-                print(f"Episode {episode} - Mean reward {reward_mean} - Mean Loss {loss} - Mean q {q} - Epsilon {mario.exploration_rate}")
-
-                
+                print(f"Episode {episode} - Mean reward {reward_mean} - Mean Loss {loss} - Mean q {q} - Epsilon {mario.exploration_rate} - Memory length {memory_length}")
 
             break
 
 
 
-if not(LEARN_DURING_EPISODE):
+    if not(LEARN_DURING_EPISODE):
 
-    if episode % SYNC_EVERY == 0:
-        mario.sync_Q_target()
+        if episode % SYNC_EVERY == 0:
+            print('SYNCHRONISING NETWORKS')
+            mario.sync_Q_target()
 
-    # Saving useful variables : model, episode, epsilon
-    episode = episode +1 
-    torch.save(mario.net.state_dict(), save_dir /'model_stat_dict.pt')
-    torch.save(mario.exploration_rate, save_dir / 'epsilon.pt')
-    torch.save(episode, save_dir / 'episode.pt')
-    
+        # Saving useful variables : model, episode, epsilon
+        episode = episode +1 
+        torch.save(mario.net.state_dict(), save_dir /'model_stat_dict.pt')
+        torch.save(mario.exploration_rate, save_dir / 'epsilon.pt')
+        torch.save(episode, save_dir / 'episode.pt')
+
+        # # Saving the best model
+        # if loss and previous_loss and loss<previous_loss :                                      
+        #     torch.save(mario.net.state_dict(), os.path.join(save_dir,'best_model_stat_dict.pt'))
+        # if loss:
+        #     previous_loss = loss

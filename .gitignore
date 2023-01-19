@@ -1,4 +1,6 @@
 __pycache__/*
 checkpoints/*
-mario/checkpoints/*
+generic/checkpoints/*
+generic/stable_baseline/logdir
 test.png
+archive/

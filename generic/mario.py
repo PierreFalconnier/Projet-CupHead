@@ -24,6 +24,7 @@ if gym.__version__ < '0.26':
     env = gym_super_mario_bros.make("SuperMarioBros-1-1-v0", new_step_api=True)
 else:
     env = gym_super_mario_bros.make("SuperMarioBros-1-1-v0", render_mode='rgb', apply_api_compatibility=True)
+    env = gym_super_mario_bros.make("SuperMarioBros-1-1-v0", render_mode='human', apply_api_compatibility=True)
 
 # Limit the action-space to
 #   0. walk right
@@ -39,9 +40,10 @@ class MarioNet(nn.Module):
   input -> (conv2d + relu) x 3 -> flatten -> (dense + relu) x 2 -> output
   """
 
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, double_q_learning=False):
         super().__init__()
         self.c, self.h, self.w = input_dim
+        self.double_q_learning = double_q_learning
 
         # Model perso
         self.kernel_size_list = [8,4,3]
@@ -75,9 +77,10 @@ class MarioNet(nn.Module):
 
         self.target = copy.deepcopy(self.online)
 
-        # # Q_target parameters are frozen.
-        # for p in self.target.parameters():
-        #     p.requires_grad = False
+        if self.double_q_learning == False:
+            # Q_target parameters are frozen.
+            for p in self.target.parameters():
+                p.requires_grad = False
 
     def forward(self, input, model):
         if model == "online":
@@ -175,6 +178,8 @@ class Mario:
                 sync_every=1e4,
                 device = "cuda" if torch.cuda.is_available() else "cpu",
                 learn_during_episode = True,
+                memory_max_len = 50000,
+                double_q_learning=False,
                 ) -> None:
 
         self.state_dim = state_dim
@@ -185,7 +190,7 @@ class Mario:
         self.device = device
 
         # Mario's DNN to predict the most optimal action - we implement this in the Learn section
-        self.net = MarioNet(self.state_dim, self.action_dim).float()
+        self.net = MarioNet(self.state_dim, self.action_dim, double_q_learning=double_q_learning).float()
         self.net = self.net.to(device=self.device)
 
         self.exploration_rate = exploration_rate_init
@@ -199,7 +204,10 @@ class Mario:
         self.learn_every = learn_every  # no. of experiences between updates to Q_online
         self.sync_every = sync_every  # no. of experiences between Q_target & Q_online sync
 
-        self.memory = deque(maxlen=100000)
+        self.double_q_learning = double_q_learning
+
+        self.memory_max_len = memory_max_len
+        self.memory = deque(maxlen=memory_max_len)
         self.batch_size = batch_size
 
         self.gamma = gamma
@@ -338,40 +346,58 @@ class Mario:
             return (td_est.mean().item(), loss)
         
         else:
+            if self.double_q_learning:
+                #---- First model (double Q learning)
+                state, next_state, action, reward, done = self.recall()
+                if self.device != "cpu" :
+                    # print(f"Transfer : memory to {self.device}")
+                    state=state.to(device=self.device)
+                    next_state=next_state.to(device=self.device)
+                    action=action.to(device=self.device)
+                    reward=reward.to(device=self.device)
+                    done=done.to(device=self.device)
+                # Get TD Estimate
+                td_est = self.td_estimate(state, action)
+                # Get TD Target
+                td_tgt = self.td_target(reward, next_state, done)
+                # Backpropagate loss through Q_online
+                loss = self.update_Q_online(td_est, td_tgt)
+
+                #---- Second model (double Q learning)
+                state, next_state, action, reward, done = self.recall()
+                if self.device != "cpu" :
+                    # print(f"Transfer : memory to {self.device}")
+                    state=state.to(device=self.device)
+                    next_state=next_state.to(device=self.device)
+                    action=action.to(device=self.device)
+                    reward=reward.to(device=self.device)
+                    done=done.to(device=self.device)
+                # Get TD Estimate
+                td_est_2 = self.td_estimate(state, action, model='target')
+                # Get TD Target
+                td_tgt_2 = self.td_target(reward, next_state, done, first_model='target', second_model='online')
+                # Backpropagate loss through Q_online
+                loss = self.update_Q_online(td_est_2, td_tgt_2)
+
+                return (td_est.mean().item(), loss)
             
-            #---- First model (double Q learning)
-            state, next_state, action, reward, done = self.recall()
-            if self.device != "cpu" :
-                # print(f"Transfer : memory to {self.device}")
-                state=state.to(device=self.device)
-                next_state=next_state.to(device=self.device)
-                action=action.to(device=self.device)
-                reward=reward.to(device=self.device)
-                done=done.to(device=self.device)
-            # Get TD Estimate
-            td_est = self.td_estimate(state, action)
-            # Get TD Target
-            td_tgt = self.td_target(reward, next_state, done)
-            # Backpropagate loss through Q_online
-            loss = self.update_Q_online(td_est, td_tgt)
+            else: # q learning classique avec target
+                state, next_state, action, reward, done = self.recall()
+                if self.device != "cpu" :
+                    # print(f"Transfer : memory to {self.device}")
+                    state=state.to(device=self.device)
+                    next_state=next_state.to(device=self.device)
+                    action=action.to(device=self.device)
+                    reward=reward.to(device=self.device)
+                    done=done.to(device=self.device)
+                # Get TD Estimate
+                td_est = self.td_estimate(state, action)
+                # Get TD Target
+                td_tgt = self.td_target(reward, next_state, done)
+                # Backpropagate loss through Q_online
+                loss = self.update_Q_online(td_est, td_tgt)
+                return (td_est.mean().item(), loss)
 
-            #---- Second model (double Q learning)
-            state, next_state, action, reward, done = self.recall()
-            if self.device != "cpu" :
-                # print(f"Transfer : memory to {self.device}")
-                state=state.to(device=self.device)
-                next_state=next_state.to(device=self.device)
-                action=action.to(device=self.device)
-                reward=reward.to(device=self.device)
-                done=done.to(device=self.device)
-            # Get TD Estimate
-            td_est_2 = self.td_estimate(state, action, model='target')
-            # Get TD Target
-            td_tgt_2 = self.td_target(reward, next_state, done, first_model='target', second_model='online')
-            # Backpropagate loss through Q_online
-            loss = self.update_Q_online(td_est_2, td_tgt_2)
-
-            return (td_est.mean().item(), loss)
 
 
 import numpy as np

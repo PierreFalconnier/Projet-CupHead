@@ -8,8 +8,8 @@ import os
 from torchvision.transforms import ToTensor, Resize, Grayscale, Compose,CenterCrop, Normalize
 from torchvision.transforms.functional import crop
 import torch
-import sys
-import gc
+import gym
+from gym import spaces
 
 if os.name == 'nt':
     from mss.windows import MSS as mss
@@ -45,19 +45,12 @@ def iprint(img):
     plt.show()
 
 # Classe pour utiliser le clavier sur un nouveau thread
-import multiprocessing
 import threading
 
-# Actions
-# actions_binds_list = ["x"    ,"z"   ,"v"      ,"shiftleft","c"   ,"right","left","up","down","tab"          ]
-# actions_names_list = ["shoot","jump","exshoot","dash"     ,"lock","right","left","up","down","switch_weapon"]
-# flying_actions_list =       ["x"    ,"v"      ,"z"    ,"shift"]
-# flying_actions_names_list = ["shoot","special","parry","shrink"]
-# action_dim = len(actions_binds_list)
 
 # Environment class, ATTENTION : on manipule des images BGR, pas RGB, c'est important pour les corrélations
 
-class CupHeadEnvironment(object):
+class CupHeadEnvironment(gym.Env):
 
     def __init__(
         self,
@@ -74,6 +67,7 @@ class CupHeadEnvironment(object):
         hold_timings = [],
         forward_action_index_list = [],
         backward_action_index_list = [],
+        stable_baseline = False,
         ) -> None:
 
 
@@ -105,11 +99,7 @@ class CupHeadEnvironment(object):
             print("Cuphead window outside of the sreen !")
 
         # Actions
-        # self.actions_list = [["right"],["left"],["up"],["down"],["s"],["z"],["shiftleft"],["z","right"],["z","left"]]   # s correspond à 'still', cuphead ne fait rien
-        # self.hold_timings = [0.75,   0.75,  0.3, 0.3,   0.75,  0.75,   0.1,      0.65,          0.65]
-        # self.actions_list = [["right"],["left"],["left"],["z"],["z","right"],["shiftleft"]]   # s correspond à 'still', cuphead ne fait rien
-        # self.hold_timings = [0.75,   0.75,        0.1,    0.7
-        # 5,      0.65,        0.1]
+  
        
         self.actions_list = actions_list  
         self.hold_timings = hold_timings
@@ -120,10 +110,12 @@ class CupHeadEnvironment(object):
         self.controls_enabled = controls_enabled   # si True, le programme utilise PyAutoGUI et controle le clavier
 
         self.current_hp = 3 
-        # self.is_dead = False
+        self.is_dead = False
         self.last_progress = 0
         self.done = False
         self.reward = 0
+
+        self.temps = 0
 
         # self.interact = InteractWithKeyboard(actions_list=actions_list, 
         #                                     hold_timings=hold_timings,
@@ -224,16 +216,62 @@ class CupHeadEnvironment(object):
         # 'Forward': 1
         #}
 
+
+        # Ajouts pour héritage de gym et compatibilité avec Stable Baseline
+        # Les tensor torch on été remplacé par des np.array
+        self.stable_baseline = stable_baseline
+        self.multidiscret = False
+        if self.stable_baseline:
+            self.observation_space = spaces.Box(low=0,high=255, shape=(self.dim_state,self.resize_h,self.resize_w), dtype=np.uint8)
+            if self.multidiscret:
+                self.action_space = spaces.MultiDiscrete([self.actions_dim, self.actions_dim])
+            else:
+                self.action_space = spaces.Discrete(self.actions_dim)
+        
+
+
+    def render(self):
+        print("Render methode not implemented")
+        return 
+        
+    def close(self):
+        print("Close methode not implemented")
+        return 
+
     def take_screenshot(self):
         with mss() as sct:
             frame = np.array(sct.grab(self.mon)  , dtype=np.uint8)
             return frame[:, :, :3]  
     
-    def reset_episode(self):
+    def reset(self):
         time.sleep(2)
         self.current_hp = 3
         self.is_dead = False
-        img_tensor = torch.zeros((self.dim_state,self.resize_h, self.resize_w))
+        self.done = False
+        self.temps = 0
+
+        if self.stable_baseline:
+            img_tensor = np.zeros((self.dim_state,self.resize_h, self.resize_w), dtype=np.uint8)
+        else:
+            img_tensor = torch.zeros((self.dim_state,self.resize_h, self.resize_w))
+        
+        with mss() as sct:
+            bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
+            img =  bgra_array[:, :, :3]  
+
+        if self.is_GameOver(img):
+            time.sleep(0.5)
+            if self.stable_baseline:
+                pg.press('enter')
+        else:
+            time.sleep(1)
+            pg.press('esc')
+            time.sleep(0.4)
+            pg.press('down')
+            time.sleep(0.1)
+            if self.stable_baseline:
+                pg.press('enter')
+
         return img_tensor
     
     def holdKeys(*keys,seconds=0.1):
@@ -270,38 +308,27 @@ class CupHeadEnvironment(object):
     # def is_health_point_lost(self,current_hp,img):
     def is_health_point_lost(self,img):
         
-        # # Maj new 
-        # img_hp = img[self.h_min_hp:self.h_max_hp,self.w_min_hp:self.w_max_hp]
-        # gray = cv2.cvtColor(img_hp, cv2.COLOR_BGR2GRAY)
-        # _,self.new_hp = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
-        # # Correlation
-        # res = cv2.matchTemplate(self.prev_hp, self.new_hp, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-        # # Maj prev
-        # self.prev_hp = self.new_hp.copy()
-
-        # return (res < self.correlation_threshold).any()
-
         img_hp = img[self.h_min_hp:self.h_max_hp,self.w_min_hp:self.w_max_hp]
         if self.current_hp == 3:
             res = cv2.matchTemplate(img_hp \
                                 , self.img_2hp, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
             
-            return (res >= 0.95).any()   # commenter si version  multithreading 
+            return (res >= 0.95).any()   
             
         if self.current_hp == 2:
             res1 = cv2.matchTemplate(img_hp \
-                                , self.img_1hp_1, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
+                                , self.img_1hp_1, eval('cv2.TM_CCOEFF_NORMED')) 
             res2 = cv2.matchTemplate(img_hp \
-                                , self.img_1hp_2, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-            return (res2 >= self.correlation_threshold).any() or (res1 >=self.correlation_threshold).any()    # commenter si version  multithreading 
+                                , self.img_1hp_2, eval('cv2.TM_CCOEFF_NORMED')) 
+            return (res2 >= self.correlation_threshold).any() or (res1 >=self.correlation_threshold).any()    
         
 
         if self.current_hp == 1:   # detection de la mort, correlation avec images saved 1hp
             res1 = cv2.matchTemplate(img_hp \
-                                , self.img_1hp_1, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
+                                , self.img_1hp_1, eval('cv2.TM_CCOEFF_NORMED')) 
             res2 = cv2.matchTemplate(img_hp \
-                                , self.img_1hp_2, eval('cv2.TM_CCOEFF_NORMED')) # par correlation
-            return (res2 < 0.2).any() and (res1 < 0.2).any()    # commenter si version  multithreading 
+                                , self.img_1hp_2, eval('cv2.TM_CCOEFF_NORMED')) 
+            return (res2 < 0.2).any() and (res1 < 0.2).any()    
         
         return False
 
@@ -319,15 +346,24 @@ class CupHeadEnvironment(object):
             for key in keys:
                 pg.keyUp(key)
 
-    def step(self,action_idx, temps):    # correspond à un épisode, renvoie : next_state, reward, done, trunc, info
+    def step(self,action_idx):    # correspond à un épisode, renvoie : next_state, reward, done, trunc, info
         self.done = False
         self.reward = 0
-        event_is_dead = threading.Event()
+        self.event_is_dead = threading.Event()
+        info = {}
         # t = time.time()
 
         # Action de l'agent
-        act_thread = threading.Thread(target=self.act_in_environment, args=[action_idx, event_is_dead])    # parallélisation de l'action
-        act_thread.start()
+        
+        if self.multidiscret:
+            act_thread = threading.Thread(target=self.act_in_environment, args=[action_idx[0], self.event_is_dead])    # parallélisation de l'action
+            act_thread.start()
+            act_thread2 = threading.Thread(target=self.act_in_environment, args=[action_idx[1], self.event_is_dead])    # parallélisation de l'action
+            act_thread2.start()
+        else:
+            act_thread = threading.Thread(target=self.act_in_environment, args=[action_idx, self.event_is_dead])    # parallélisation de l'action
+            act_thread.start()
+        
 
         with mss() as sct:
 
@@ -340,23 +376,22 @@ class CupHeadEnvironment(object):
 
             # Game Over
             if self.current_hp==1 and self.is_health_point_lost(img=img) : 
-            
-            # if self.is_GameOver(img):
-                # cv2.imwrite('test.png', img)
-                event_is_dead.set()  # boolean partagé pour le act_thread pour stopper l'interaction
+                self.event_is_dead.set()  # boolean partagé pour le act_thread pour stopper l'interaction
                 self.done = True
-                print("You Died !")
+                # print("You Died !")
                 time.sleep(4)
                 # Progress
                 bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
                 img =  bgra_array[:, :, :3]
-                # print('Result from is_Gameover methode after sleep : ',self.is_GameOver(img))
-                self.last_progress = self.compute_progress(img)           
+                self.last_progress = self.compute_progress(img)    
+                info["progression"] = self.last_progress       
                 # print(f"Progress in level : {int(100*self.last_progress)} %")
                 # Reward
                 self.reward +=  self.reward_dict['GameOver']
+                self.reward +=  self.last_progress*self.reward_dict['Progress_factor']
                 # Restart
-                # pg.press('enter')           
+                # if self.stable_baseline:  # sinon, géré dans le main
+                #     pg.press('enter')           
             
             # Game Win
 
@@ -378,64 +413,44 @@ class CupHeadEnvironment(object):
             next_state = torch.zeros(self.dim_state,self.resize_h,self.resize_w)
             for k in range(self.dim_state):
                 bgra_array = np.array(sct.grab(self.mon)  , dtype=np.uint8)
-                img_state =  bgra_array[:,:, :3]  # copy pour régler le pb des srides négatifs par géré par torch
-                # img_state =  bgra_array[bgra_array.shape[0]//4:,bgra_array.shape[1]//8:7*bgra_array.shape[1]//8, :3]  # copy pour régler le pb des srides négatifs par géré par torch
-                # img_state =  bgra_array[bgra_array.shape[0]//4:,:, :3]  # copy pour régler le pb des srides négatifs par géré par torch
-                 
-                next_state[k] = self.transform(img_state.copy()) 
-                time.sleep(self.sleep_between_state_frames)  # 1/24 sec
+                img_state =  bgra_array[:,:, :3]  
+                next_state[k] = self.transform(img_state.copy())        # copy pour régler le pb des srides négatifs par géré par torch
+                time.sleep(self.sleep_between_state_frames)             # 1/24 sec
             
             # MobileNet
-            if self.use_mobilenet:
+            if self.use_mobilenet and not(self.stable_baseline):
                 next_state = self.normalise(next_state)
             
-            # for k in range(self.dim_state):
-            #     iprint(next_state[k])
-
-
+            # Compatibilité avec Stable Baseline
+            if self.stable_baseline:
+                next_state = next_state.numpy()                             # tensor  np.array 
+                next_state = (next_state * 255).round().astype(np.uint8)    # float32 entre 0 et 1 --> uint8 entre 0 et 255 
+                
             # Correlation
 
             bgra_array = np.array(sct.grab(self.mon_for_correlation)  , dtype=np.uint8)
             next =cv2.cvtColor(bgra_array, cv2.COLOR_BGRA2GRAY)
             res = cv2.matchTemplate(prev,next, eval('cv2.TM_CCOEFF_NORMED')) 
-            if (res < 0.9).any() : 
+            if (res < 0.9).any() and not(self.multidiscret) : 
                 if action_idx in self.forward_action_index_list:
-                    # print("Moving Forward !")
                     self.reward += self.reward_dict['Forward']                      # récompense pour avancer
                 if action_idx in self.backward_action_index_list:
-                    # print("Moving Backward !")
-                    self.reward += self.reward_dict['Backward']                      # récompense pour avancer
+                    self.reward += self.reward_dict['Backward']                     # récompense pour avancer
 
-                
-   
             # Limite de temps pour un épisode atteinte
 
-            if temps > self.episode_time_limite:
-                event_is_dead.set()
+            if self.temps > self.episode_time_limite:
+                self.event_is_dead.set()
                 self.done = True
                 self.reward += -10 
                 print("Time limite reached, reseting...")
-                # if event_is_dead.is_set():
-                if self.is_GameOver(img):
-                    time.sleep(0.5)
-                    # pg.press('enter')
-                else:
-                    time.sleep(1)
-                    pg.press('esc')
-                    time.sleep(0.4)
-                    pg.press('down')
-                    time.sleep(0.1)
-                    # pg.press('enter')
+                self.reset()
 
             act_thread.join()    # pour synchro / attendre le thread avant de terminer 
+            if self.multidiscret:
+                act_thread2.join()
 
-            # print(t - time.time())
-            # for name, size in sorted(((name, sys.getsizeof(value)) for name, value in locals().items()),
-            #                     key= lambda x: -x[1])[:10]:
-            #     print("{:>30}: {:>8}".format(name, sizeof_fmt(size)))
-            # print('')
-
-            return next_state, self.reward, self.done
+            return next_state, self.reward, self.done, info  # obs, reward, done, info
     
 
 if __name__ == '__main__':

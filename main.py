@@ -30,6 +30,7 @@ LEARN_DURING_EPISODE = False                # Si False, learn entre les épisode
 RESUME_CHECKPOINT    = True      # Reprendre un entrainement
 LOAD_MEMORY          = False
 LOGGING              = True       # Logger pendant entrainement 
+MEMORY_ON_HARD_DISK  = False 
 
 
 #---- PATHS
@@ -71,11 +72,7 @@ REWARD_DICT = {
     'Backward':         -1,
     }
 # agent
-if Path.exists(CHECKPOINT_PATH / 'epsilon.pt' ):
-    print('Loading epsilon')
-    EXPLORATION_RATE_INIT = torch.load(CHECKPOINT_PATH / 'epsilon.pt')
-else:
-    EXPLORATION_RATE_INIT = 0.99
+EXPLORATION_RATE_INIT = 1
 EXPLORATION_RATE_DECAY = 0.99999
 EXPLORATION_RATE_MIN = 0.1
 BATCH_SIZE = 32
@@ -87,6 +84,8 @@ SYNC_EVERY = 2  # no. of eps or steps between Q_target & Q_online sync
 LEARNING_RATE = 0.00025
 DEVICE = "cpu"       # attention, pour les tensors, par pour le model ni entrainement
 # DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # device used for training
+
+DOUBLE_Q_LEARNING = False
 
 
 #---- AGENT
@@ -105,7 +104,9 @@ cuphead = CupHead(
     use_mobilenet=USE_MOBILENET,
     gamma=GAMMA,
     batch_size=BATCH_SIZE,
-    sync_every=SYNC_EVERY
+    sync_every=SYNC_EVERY,
+    max_memory_len=30000,
+    double_q_learning = DOUBLE_Q_LEARNING,
     )
 
 #---- ENVIRONMENT 
@@ -156,7 +157,7 @@ if not(LEARN_DURING_EPISODE) and Path.exists(CHECKPOINT_PATH / 'epsilon.pt' ):
 
 
 #---- START
-episodes = 1
+episodes = 50000
 previous_loss = None
 
 if not CONTROLS_ENABLED : print("CONTROLS DISABLED")
@@ -217,7 +218,7 @@ for e in range(episodes):
 
                 cuphead.curr_ep = episode
 
-                if os.path.exists(save_dir / 'memory.pt' ):
+                if MEMORY_ON_HARD_DISK and os.path.exists(save_dir / 'memory.pt' ):
                         print("Loading old memories...")
                         old_memory = torch.load(save_dir / 'memory.pt' ) 
                         old_memory.extend(cuphead.memory)
@@ -250,12 +251,14 @@ for e in range(episodes):
                     writer.add_scalar('epsilon', cuphead.exploration_rate, episode)
                     writer.add_scalar('progress', env.last_progress, episode)
 
-                print('Saving Cuphead memory...')
-                torch.save(cuphead.memory, save_dir / 'memory.pt' )
-                
-                cuphead.memory = deque(maxlen=5000)
+                if MEMORY_ON_HARD_DISK:
+                    print('Saving Cuphead memory...')
+                    torch.save(cuphead.memory, save_dir / 'memory.pt' )
+                    cuphead.memory = deque(maxlen=cuphead.max_memory_len)
+                else:
+                    memory_length = len(cuphead.memory)
 
-                print(f"Episode {episode} - Mean reward {reward_mean} - Mean Loss {loss} - Mean q {q} - Epsilon {cuphead.exploration_rate}")
+                print(f"Episode {episode} - Mean reward {reward_mean} - Mean Loss {loss} - Mean q {q} - Epsilon {cuphead.exploration_rate} - Memory length {memory_length}")
 
 
 
@@ -271,8 +274,9 @@ for e in range(episodes):
         if LEARN_DURING_EPISODE and LOGGING : 
             pass  # a faire
         else:
-            # logger.record_2(episode=e, epsilon=cuphead.exploration_rate, step=cuphead.curr_step,  progress = env.last_progress, loss = loss, reward_mean=reward_mean)
-            # logger.init_episode()
+            if episode % SYNC_EVERY == 0:
+                print('SYNCHRONISING NETWORKS')
+                cuphead.sync_Q_target()
 
             # Saving useful variables : model, episode, epsilon
             episode = episode +1 
@@ -280,11 +284,11 @@ for e in range(episodes):
             torch.save(cuphead.exploration_rate, save_dir / 'epsilon.pt')
             torch.save(episode, save_dir / 'episode.pt')
 
-
-        # if loss and previous_loss and loss<previous_loss :                                      # sauve que si amélioration
-        #     torch.save(cuphead.net.state_dict(), os.path.join(save_dir,'model_stat_dict.pt'))
-        # if loss:
-        #     previous_loss = loss
+            # Saving the best model
+            if loss and previous_loss and loss<previous_loss :                                      
+                torch.save(cuphead.net.state_dict(), os.path.join(save_dir,'best_model_stat_dict.pt'))
+            if loss:
+                previous_loss = loss
       
 
 
